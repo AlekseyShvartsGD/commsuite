@@ -1,2 +1,2 @@
 # commsuite
-Messenger made with flutter and kotlin.
+Messenger made with dart and kotlin. Supports Windows, Android and Linux.
