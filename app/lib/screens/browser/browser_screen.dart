@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/download_service.dart';
 import '../../services/url_service.dart';
+import '../../services/webview_service.dart';
 import 'downloads_sheet.dart';
 import '../../core/localizations.dart';
 
@@ -35,15 +38,32 @@ class _BrowserScreenState extends State<BrowserScreen> {
   static const _home = 'https://www.google.com/';
   static const _bookmarksKey = 'commsuite.bookmarks';
 
+  // null = still probing WebView2 availability; false = missing (Windows).
+  bool? _webviewOk;
+
+  bool get _isWindows =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
   @override
   void initState() {
     super.initState();
     _tabs.add(_BrowserTab(_home));
     _urlController.text = _home;
     _loadBookmarks();
+    _probeWebView();
     BrowserRequest.request.addListener(_onBrowserRequest);
     // Rebuild the list from disk so downloads from earlier sessions show up.
     DownloadService.instance.refresh();
+  }
+
+  Future<void> _probeWebView() async {
+    final version = await webview2RuntimeVersion();
+    if (!mounted) return;
+    setState(() {
+      // WebView2 is only mandatory on Windows (Android uses the OS webview,
+      // Linux has no embedded webview at all).
+      _webviewOk = !_isWindows || version.isNotEmpty;
+    });
   }
 
   @override
@@ -147,6 +167,10 @@ class _BrowserScreenState extends State<BrowserScreen> {
       }
     });
     if (!_embedded) {
+      await _openExternal(url);
+      return;
+    }
+    if (_webviewOk == false) {
       await _openExternal(url);
       return;
     }
@@ -468,42 +492,26 @@ class _BrowserScreenState extends State<BrowserScreen> {
         onOpen: () => _openExternal(tab.currentUrl),
       );
     }
-    return InAppWebView(
-      initialUrlRequest: URLRequest(url: WebUri(tab.currentUrl)),
-      initialSettings: InAppWebViewSettings(
-        javaScriptEnabled: true,
-        domStorageEnabled: true,
-        mediaPlaybackRequiresUserGesture: false,
-        allowFileAccess: true,
-      ),
-      onWebViewCreated: (controller) async {
-        tab.controller = controller;
-        // Cover the race where navigation happened before the webview was
-        // created (e.g. a link request fired while the tab was still offstage).
-        if (tab.currentUrl.isNotEmpty) {
-          await controller.loadUrl(
-            urlRequest: URLRequest(url: WebUri(tab.currentUrl)),
-          );
-        }
-      },
-      onTitleChanged: (controller, title) {
+    if (_webviewOk == false) {
+      return _WebViewUnavailable(
+        url: tab.currentUrl,
+        onOpen: () => _openExternal(tab.currentUrl),
+        onRetry: _probeWebView,
+      );
+    }
+    if (_webviewOk == null) {
+      // WebView2 availability probe is still running (instant in practice).
+      return const Center(child: CircularProgressIndicator());
+    }
+    return _WebviewHost(
+      key: ObjectKey(tab),
+      tab: tab,
+      onDownloadStart: _onDownloadStart,
+      onChanged: () {
         if (!mounted) return;
-        setState(() => tab.title = title);
+        setState(() {});
+        if (identical(tab, _activeTab)) _urlController.text = tab.currentUrl;
       },
-      onProgressChanged: (controller, progress) {
-        if (!mounted) return;
-        setState(() => tab.progress = progress);
-      },
-      onUpdateVisitedHistory: (controller, uri, isReload) {
-        if (!mounted || uri == null) return;
-        setState(() {
-          tab.history.add(uri.toString());
-          tab.currentUrl = uri.toString();
-          if (identical(tab, _activeTab)) _urlController.text = uri.toString();
-        });
-      },
-      onDownloadStartRequest: (controller, request) =>
-          _onDownloadStart(controller, request),
     );
   }
 }
@@ -563,6 +571,196 @@ class _ExternalBrowserView extends StatelessWidget {
                   ru: 'Открыть в системном браузере',
                 ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Owns the WebView2 platform view for one browser tab.
+///
+/// flutter_inappwebview gives no callback when the native webview fails to
+/// initialize (it just throws deep inside platform-view creation). A watchdog
+/// treats "no controller after [_creationTimeout]" as a failure and degrades
+/// to the system-browser fallback with a retry button instead of leaving a
+/// blank area or crashing the tab.
+class _WebviewHost extends StatefulWidget {
+  final _BrowserTab tab;
+  final VoidCallback onChanged;
+  final void Function(InAppWebViewController, DownloadStartRequest)
+      onDownloadStart;
+
+  const _WebviewHost({
+    super.key,
+    required this.tab,
+    required this.onChanged,
+    required this.onDownloadStart,
+  });
+
+  @override
+  State<_WebviewHost> createState() => _WebviewHostState();
+}
+
+class _WebviewHostState extends State<_WebviewHost> {
+  static const _creationTimeout = Duration(seconds: 20);
+  Timer? _watchdog;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _armWatchdog();
+  }
+
+  @override
+  void dispose() {
+    _watchdog?.cancel();
+    super.dispose();
+  }
+
+  void _armWatchdog() {
+    _watchdog?.cancel();
+    _watchdog = Timer(_creationTimeout, () {
+      if (!mounted) return;
+      if (widget.tab.controller == null) {
+        setState(() => _failed = true);
+      }
+    });
+  }
+
+  void _retry() {
+    final old = widget.tab.controller;
+    widget.tab.controller = null;
+    old?.dispose();
+    setState(() => _failed = false);
+    _armWatchdog();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_failed) {
+      return _WebViewUnavailable(
+        url: widget.tab.currentUrl,
+        onOpen: () => UrlService.openSystem(widget.tab.currentUrl),
+        onRetry: _retry,
+      );
+    }
+    final tab = widget.tab;
+    return InAppWebView(
+      initialUrlRequest: URLRequest(url: WebUri(tab.currentUrl)),
+      initialSettings: InAppWebViewSettings(
+        javaScriptEnabled: true,
+        domStorageEnabled: true,
+        mediaPlaybackRequiresUserGesture: false,
+        allowFileAccess: true,
+      ),
+      onWebViewCreated: (controller) {
+        _watchdog?.cancel();
+        tab.controller = controller;
+        if (tab.currentUrl.isNotEmpty) {
+          controller.loadUrl(
+            urlRequest: URLRequest(url: WebUri(tab.currentUrl)),
+          );
+        }
+      },
+      onTitleChanged: (controller, title) {
+        tab.title = title;
+        widget.onChanged();
+      },
+      onProgressChanged: (controller, progress) {
+        tab.progress = progress;
+        widget.onChanged();
+      },
+      onUpdateVisitedHistory: (controller, uri, isReload) {
+        if (uri == null) return;
+        tab.history.add(uri.toString());
+        tab.currentUrl = uri.toString();
+        widget.onChanged();
+      },
+      onDownloadStartRequest: widget.onDownloadStart,
+    );
+  }
+}
+
+/// Shown when the built-in webview cannot start (WebView2 runtime missing or
+/// the platform view failed to initialize). Pages are opened externally.
+class _WebViewUnavailable extends StatelessWidget {
+  final String url;
+  final VoidCallback onOpen;
+  final VoidCallback onRetry;
+
+  const _WebViewUnavailable({
+    required this.url,
+    required this.onOpen,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.public_off,
+              size: 56,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              L.t(
+                'Built-in browser is unavailable',
+                ru: 'Встроенный браузер недоступен',
+              ),
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              L.t(
+                'The built-in browser needs the Microsoft Edge WebView2 '
+                'Runtime, which is not installed on this PC. Pages open in '
+                'your system browser instead.',
+                ru: 'Встроенному браузеру нужен компонент Microsoft Edge '
+                    'WebView2 Runtime, который не установлен на этом ПК. '
+                    'Страницы открываются в системном браузере.',
+              ),
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            SelectableText(
+              url,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.primary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 12,
+              alignment: WrapAlignment.center,
+              children: [
+                FilledButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh),
+                  label: Text(L.t('Try again', ru: 'Повторить')),
+                ),
+                OutlinedButton.icon(
+                  onPressed: onOpen,
+                  icon: const Icon(Icons.launch),
+                  label: Text(
+                    L.t(
+                      'Open in system browser',
+                      ru: 'Открыть в системном браузере',
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

@@ -1,6 +1,7 @@
 #include "flutter_window.h"
 
 #include <optional>
+#include <string>
 
 #include <flutter/method_channel.h>
 #include <flutter/standard_method_codec.h>
@@ -53,6 +54,46 @@ void SetAutoStartEnabled(bool enabled) {
   ::RegCloseKey(key);
 }
 
+// Microsoft Edge WebView2 Runtime is what flutter_inappwebview uses to render
+// pages on Windows. Its Evergreen version is published in the EdgeUpdate
+// client registry key below (both HKLM/HKCU and 32/64-bit views). Empty means
+// the runtime is missing, in which case the built-in browser cannot start at
+// all ("Cannot create the InAppWebView instance!").
+constexpr wchar_t kWebView2ClientKey[] =
+    L"SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}";
+
+std::wstring WebView2RuntimeVersion() {
+  const DWORD views[] = {0, RRF_SUBKEY_WOW6432KEY};
+  const HKEY roots[] = {HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+  for (const HKEY root : roots) {
+    for (const DWORD view : views) {
+      wchar_t value[128]{};
+      DWORD size = sizeof(value);
+      if (::RegGetValueW(root, kWebView2ClientKey, L"pv",
+                         RRF_RT_REG_SZ | view, nullptr, value, &size) ==
+              ERROR_SUCCESS &&
+          value[0] != L'\0') {
+        return value;
+      }
+    }
+  }
+  return L"";
+}
+
+std::string ToUtf8(const std::wstring& wide) {
+  if (wide.empty()) {
+    return "";
+  }
+  const int length = ::WideCharToMultiByte(
+      CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()), nullptr, 0,
+      nullptr, nullptr);
+  std::string utf8(length, '\0');
+  ::WideCharToMultiByte(CP_UTF8, 0, wide.c_str(),
+                        static_cast<int>(wide.size()), &utf8[0], length,
+                        nullptr, nullptr);
+  return utf8;
+}
+
 }  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -100,6 +141,26 @@ bool FlutterWindow::OnCreate() {
           }
           SetAutoStartEnabled(enabled);
           result->Success();
+        } else {
+          result->NotImplemented();
+        }
+      });
+
+  // Dart <-> native bridge for the Microsoft Edge WebView2 Runtime probe.
+  // The Browser tab uses it to offer a system-browser fallback instead of
+  // throwing "Cannot create the InAppWebView instance!" when WebView2 is
+  // not installed.
+  static auto webview2_channel =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "commsuite/webview2",
+          &flutter::StandardMethodCodec::GetInstance());
+  webview2_channel->SetMethodCallHandler(
+      [](const flutter::MethodCall<flutter::EncodableValue>& call,
+         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+             result) {
+        if (call.method_name() == "runtimeVersion") {
+          result->Success(
+              flutter::EncodableValue(ToUtf8(WebView2RuntimeVersion())));
         } else {
           result->NotImplemented();
         }

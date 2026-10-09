@@ -18,6 +18,10 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
+  // The Browser screen hosts a WebView2 platform view. Mounting it only once
+  // the tab is actually opened gives the webview a visible, onstage parent
+  // window and avoids creating it blindly at app startup.
+  bool _browserMounted = false;
 
   @override
   void initState() {
@@ -35,7 +39,10 @@ class _HomeShellState extends State<HomeShell> {
   /// built-in browser.
   void _onBrowserRequest() {
     if (BrowserRequest.request.value != null && _index != 3) {
-      setState(() => _index = 3);
+      setState(() {
+        _browserMounted = true;
+        _index = 3;
+      });
     }
   }
 
@@ -49,12 +56,12 @@ class _HomeShellState extends State<HomeShell> {
           Expanded(
             child: IndexedStack(
               index: _index,
-              children: const [
-                ConversationsScreen(),
-                ContactsScreen(),
-                FilesScreen(),
-                BrowserScreen(),
-                SettingsScreen(),
+              children: [
+                const ConversationsScreen(),
+                const ContactsScreen(),
+                const FilesScreen(),
+                _browserMounted ? const BrowserScreen() : const SizedBox.shrink(),
+                const SettingsScreen(),
               ],
             ),
           ),
@@ -85,7 +92,10 @@ class _HomeShellState extends State<HomeShell> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: (i) => setState(() {
+          if (i == 3) _browserMounted = true;
+          _index = i;
+        }),
         destinations: [
           NavigationDestination(
             icon: const Icon(Icons.chat_bubble_outline),

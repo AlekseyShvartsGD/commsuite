@@ -1,22 +1,22 @@
 {
     "installer":  "/update/commsuite-setup.exe",
-    "version":  "1.0.32",
+    "version":  "1.0.33",
     "apk":  "/update/commsuite.apk",
-    "apkSize":  95028291,
+    "apkSize":  95093939,
     "mirrors":  {
-                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.32/commsuite-linux-1.0.32.tar.gz",
-                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.32/commsuite-setup.exe",
-                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.32/commsuite.apk"
+                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.33/commsuite-linux-1.0.33.tar.gz",
+                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.33/commsuite-setup.exe",
+                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.33/commsuite.apk"
                 },
-    "apkVersion":  "1.0.32",
-    "publishedAt":  1791557860052,
-    "installerSize":  39118659,
-    "linux":  "/update/commsuite-linux-1.0.32.tar.gz",
-    "installerSha256":  "43cebc76c60c0ad69c1f6a6e79ac60426f9acb965cff9a2958bf28422fa82fa5",
-    "linuxSha256":  "cd580e14254f413e6983bd5ec1a71f06c5def4e6f78970b0bf16b28005f40673",
-    "windowsVersion":  "1.0.32",
-    "notes":  "1.0.32: new app icon (Windows, Android, Linux tray) across all platforms.",
-    "apkSha256":  "73229fa01fd712a99065cc1abd892c80fbb57825a473a513d440e5da16b6d146",
-    "linuxSize":  20867803,
-    "linuxVersion":  "1.0.32"
+    "apkVersion":  "1.0.33",
+    "publishedAt":  1791560328531,
+    "installerSize":  40255975,
+    "linux":  "/update/commsuite-linux-1.0.33.tar.gz",
+    "installerSha256":  "596d2366b19eef096f6853d00c35863583aecadc6251a92621f38bd9fead44a4",
+    "linuxSha256":  "5f0760d0a89aa3754b61ccbfc8dcbf6df8386ba2e6dcb2ee6c6a88a641ae8fb1",
+    "windowsVersion":  "1.0.33",
+    "notes":  "1.0.33: Browser tab starts WebView2 only when opened; checks the WebView2 Runtime; falls back to the system browser with a clear message + retry.",
+    "apkSha256":  "f744e391ae468f423a6c70f4e19b14d09bd8a3a9dbaead2e2dc5e1c47366f7b3",
+    "linuxSize":  20867466,
+    "linuxVersion":  "1.0.33"
 }
