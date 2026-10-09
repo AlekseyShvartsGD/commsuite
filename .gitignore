@@ -1,0 +1,11 @@
+tools/
+
+# Release artifacts are published, not committed (~150MB per release).
+server/update/*.exe
+server/update/*.apk
+server/update/*.tar.gz
+
+# Built distributions, uploads, and generated/signed binaries.
+dist/
+__pycache__/
+*.pyc

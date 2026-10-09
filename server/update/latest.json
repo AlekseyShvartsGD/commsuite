@@ -1,0 +1,22 @@
+{
+    "installer":  "/update/commsuite-setup.exe",
+    "version":  "1.0.30",
+    "apk":  "/update/commsuite.apk",
+    "apkSize":  92848492,
+    "mirrors":  {
+                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.30/commsuite-linux-1.0.30.tar.gz",
+                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.30/commsuite-setup.exe",
+                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.30/commsuite.apk"
+                },
+    "apkVersion":  "1.0.30",
+    "publishedAt":  1790538262028,
+    "installerSize":  38729440,
+    "linux":  "/update/commsuite-linux-1.0.30.tar.gz",
+    "installerSha256":  "20db2c0a3df8edab20de11b64a4f1dfd36c1cfc028c0a1800d0f2d3299755da7",
+    "linuxSha256":  "183147c91eeea15e2ab2bcd1f9f6a12af880365dfc76de988083a7b06d6b74e4",
+    "windowsVersion":  "1.0.30",
+    "notes":  "Updater: fall back to mirror URLs (GitHub Releases) when the primary host is unreachable or blocked; VirusTotal proxy parsing and error reporting unchanged. All artifacts include SHA256SUMS.",
+    "apkSha256":  "a41efa1a624b99ca553b3b2d4303ec08a94c42d4515426b7318442796f3a05e5",
+    "linuxSize":  20453488,
+    "linuxVersion":  "1.0.30"
+}

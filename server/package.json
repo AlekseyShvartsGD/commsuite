@@ -1,0 +1,25 @@
+{
+  "name": "commsuite-server",
+  "version": "1.0.0",
+  "description": "Self-hosted backend for the Commsuite app: auth, chat, WebRTC signaling",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "smoke": "node test/smoke.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "better-sqlite3": "^12.2.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "ws": "^8.18.3"
+  }
+}

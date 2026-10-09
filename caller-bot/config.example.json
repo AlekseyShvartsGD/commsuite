@@ -1,0 +1,21 @@
+{
+  "sip_domain": "sip2sip.info",
+  "registrar": "proxy.sipthor.net",
+  "username": "",
+  "password": "",
+  "target": "sip:your-username@sip2sip.info",
+  "local_port": 5060,
+  "duration_seconds": 30,
+  "ring_timeout": 45,
+  "message_file": "message.wav",
+  "record_file": "recording.wav",
+  "null_audio": true,
+  "auto_answer": 200,
+  "loop": false,
+  "dtmf_messages": {
+    "1": "ok, sending",
+    "2": "please wait a moment",
+    "5": "thank you, goodbye"
+  },
+  "tts_text": "Hello, this is the caller bot. Please say your message after the beep."
+}
