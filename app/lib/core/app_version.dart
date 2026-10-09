@@ -2,4 +2,4 @@
 ///  - pubspec.yaml `version:`
 ///  - dist/commsuite.nsi `PRODUCT_VERSION` / `VIProductVersion`
 ///  - server/update/latest.json `version`
-const String appVersion = '1.0.31';
+const String appVersion = '1.0.32';

@@ -1,22 +1,22 @@
 {
     "installer":  "/update/commsuite-setup.exe",
-    "version":  "1.0.31",
+    "version":  "1.0.32",
     "apk":  "/update/commsuite.apk",
-    "apkSize":  95015971,
+    "apkSize":  95028291,
     "mirrors":  {
-                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.31/commsuite-linux-1.0.31.tar.gz",
-                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.31/commsuite-setup.exe",
-                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.31/commsuite.apk"
+                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.32/commsuite-linux-1.0.32.tar.gz",
+                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.32/commsuite-setup.exe",
+                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.32/commsuite.apk"
                 },
-    "apkVersion":  "1.0.31",
-    "publishedAt":  1791556334035,
-    "installerSize":  39106783,
-    "linux":  "/update/commsuite-linux-1.0.31.tar.gz",
-    "installerSha256":  "2a607a69ad87059c047947b4aa8315b8d9dbaab16d490b7d6f4b335b566c95c9",
-    "linuxSha256":  "9034ad0724992d753aec47c080f63497c5e6fd55c0c957728134407a1fb045f5",
-    "windowsVersion":  "1.0.31",
-    "notes":  "1.0.31: Russian UI (RU system-language auto-detect + Settings toggle), new brand icon set on Windows/Android, RuStore-ready release signing, browser Downloads tab, and minor fixes.",
-    "apkSha256":  "8850eba9c50db0700adb734767597961e0c024ee6498d87a8b3f85dc9a6b2127",
-    "linuxSize":  20862475,
-    "linuxVersion":  "1.0.31"
+    "apkVersion":  "1.0.32",
+    "publishedAt":  1791557860052,
+    "installerSize":  39118659,
+    "linux":  "/update/commsuite-linux-1.0.32.tar.gz",
+    "installerSha256":  "43cebc76c60c0ad69c1f6a6e79ac60426f9acb965cff9a2958bf28422fa82fa5",
+    "linuxSha256":  "cd580e14254f413e6983bd5ec1a71f06c5def4e6f78970b0bf16b28005f40673",
+    "windowsVersion":  "1.0.32",
+    "notes":  "1.0.32: new app icon (Windows, Android, Linux tray) across all platforms.",
+    "apkSha256":  "73229fa01fd712a99065cc1abd892c80fbb57825a473a513d440e5da16b6d146",
+    "linuxSize":  20867803,
+    "linuxVersion":  "1.0.32"
 }
