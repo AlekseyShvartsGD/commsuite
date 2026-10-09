@@ -123,12 +123,11 @@ int _compareVersions(String a, String b) {
   return 0;
 }
 
-/// Windows/Android/Linux self-updater. Polls the configured server's /update
-/// feed, and when a newer version exists it offers to download and apply it:
-/// Windows runs the NSIS installer (which replaces files, then relaunches the
-/// app); Android downloads the APK and hands it to the system installer;
-/// Linux downloads the tarball, extracts it over the running bundle and
-/// relaunches itself.
+/// Windows/Android/Linux updater. Checks the configured server's /update
+/// feed and, when a newer version exists, asks the user to download and apply
+/// it. Updates are never applied automatically: the old silent updater tore
+/// the app down mid-session and corrupted the WebView2 state, so every update
+/// now requires explicit confirmation.
 class UpdateService {
   UpdateService._();
   static final UpdateService instance = UpdateService._();
@@ -146,7 +145,6 @@ class UpdateService {
   /// check (with a few retries while the local server boots) then every 60 s.
   void start() {
     if (!supported) return;
-    _showLastUpdateNote();
     _schedule(const Duration(seconds: 3));
     // Active repeating timers are held by the isolate's timer queue, so the
     // periodic handle can be dropped after creation.
@@ -171,12 +169,10 @@ class UpdateService {
         if (info == null) continue; // nothing newer (or server unreachable yet)
         if (info.targetVersion != _shownFor) {
           _shownFor = info.targetVersion;
-          if (Platform.isWindows) {
-            // Prefer the silent path: apply in the background (see below).
-            await _autoInstall(info);
-          } else {
-            _prompt(info);
-          }
+          // Never install silently. Auto-update was removed because it killed
+          // the app mid-session and left WebView2 in a broken state; the user
+          // always confirms first.
+          _prompt(info);
         }
         break;
       }
@@ -435,26 +431,27 @@ class UpdateService {
       return;
     }
 
-    // Windows silent update: write a marker for the elevated helper task and
-    // let it apply the installer off-screen (no UAC). If that task is missing
-    // (e.g. installing over an old build), fall back to the UAC prompt path.
-    await _autoRelaunch(
-      (filePath) async {
-        await _writePendingMarker(filePath);
-        final run =
-            await Process.run('schtasks.exe', [
-              '/run',
-              '/tn',
-              'CommsuiteAutoUpdater',
-            ], runInShell: false).timeout(
-              const Duration(seconds: 10),
-              onTimeout: () => ProcessResult(-1, -1, '', 'timed out'),
-            );
-        return run.exitCode == 0;
-      },
-      fallback: filePath,
-      onApplied: null,
-    );
+    // Windows: the app exits first, then the UAC-elevated installer replaces
+    // the files (silently) and relaunches the app. The scheduled-task
+    // auto-update path was removed; this runs only on user confirmation.
+    try {
+      await Process.start(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-WindowStyle',
+          'Hidden',
+          '-Command',
+          'Start-Process -FilePath "$filePath" -ArgumentList "/S"',
+        ],
+        mode: ProcessStartMode.detached,
+        runInShell: true,
+      );
+    } catch (_) {
+      return; // refused to start; give up quietly
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    exit(0);
   }
 
   /// Linux: swap the running bundle for the verified tarball in place and
@@ -521,141 +518,5 @@ class UpdateService {
     await Process.start(exe, [], mode: ProcessStartMode.detached);
     await Future<void>.delayed(const Duration(milliseconds: 500));
     exit(0);
-  }
-
-  /// Shared "detach and apply the installer" logic. [silent] tries the
-  /// elevation-free helper-task route first; when the task is unavailable it
-  /// uses the classic ShellExecute/UAC route. The app then exits so the
-  /// installer's taskkill can't tear it down mid-write.
-  Future<void> _autoRelaunch(
-    Future<bool> Function(String filePath) silent, {
-    required String fallback,
-    Function()? onApplied,
-  }) async {
-    try {
-      final ok = await silent(fallback);
-      if (ok) {
-        onApplied?.call();
-        // Give the helper task a beat to pick up the marker before exiting.
-        await Future<void>.delayed(const Duration(milliseconds: 400));
-        exit(0);
-      }
-    } catch (_) {}
-    // Fallback: Start-Process via ShellExecute surfaces the UAC elevation
-    // prompt; the installer then taskkills, overwrites and relaunches.
-    try {
-      await Process.start(
-        'powershell.exe',
-        [
-          '-NoProfile',
-          '-WindowStyle',
-          'Hidden',
-          '-Command',
-          'Start-Process -FilePath "$fallback" -ArgumentList "/S"',
-        ],
-        mode: ProcessStartMode.detached,
-        runInShell: true,
-      );
-    } catch (_) {
-      return; // refused to start; give up quietly
-    }
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-    exit(0);
-  }
-
-  /// Windows: silently download a newer build, stage it for the elevated
-  /// helper task and exit. Runs straight from the polling tick.
-  Future<void> _autoInstall(UpdateInfo info) async {
-    final messenger = navigatorKey.currentContext == null
-        ? null
-        : ScaffoldMessenger.maybeOf(navigatorKey.currentContext!);
-    progress.value = 0;
-    final path = await _download(info);
-    if (path == null) {
-      messenger?.showSnackBar(
-        SnackBar(
-          content: Text(
-            L.t(
-              'Auto-update download failed; will retry.',
-              ru: 'Не удалось загрузить автоматическое обновление; попытка повторится.',
-            ),
-          ),
-        ),
-      );
-      return;
-    }
-    await _autoRelaunch((filePath) async {
-      await _writePendingMarker(filePath, version: info.version);
-      final run =
-          await Process.run('schtasks.exe', [
-            '/run',
-            '/tn',
-            'CommsuiteAutoUpdater',
-          ], runInShell: false).timeout(
-            const Duration(seconds: 10),
-            onTimeout: () => ProcessResult(-1, -1, '', 'timed out'),
-          );
-      return run.exitCode == 0;
-    }, fallback: path);
-  }
-
-  Future<void> _writePendingMarker(String filePath, {String? version}) async {
-    final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
-    if (localAppData.isEmpty) return;
-    final dir = Directory('$localAppData\\Commsuite');
-    await dir.create(recursive: true);
-    final bytes = await File(filePath).readAsBytes();
-    final sha = sha256.convert(bytes).toString().toLowerCase();
-    await File('${dir.path}\\pending-update.json')
-        .writeAsString(jsonEncode({'path': filePath, 'sha256': sha}));
-    if (version != null) {
-      await File('${dir.path}\\last-updated.json').writeAsString(
-        jsonEncode({
-          'version': version,
-          'time': DateTime.now().millisecondsSinceEpoch,
-        }),
-      );
-    }
-  }
-
-  /// After a silent update the "updated to" note is shown (and deleted) once.
-  Future<void> _showLastUpdateNote() async {
-    if (!supported || !Platform.isWindows) return;
-    final localAppData = Platform.environment['LOCALAPPDATA'] ?? '';
-    if (localAppData.isEmpty) return;
-    final file = File('$localAppData\\Commsuite\\last-updated.json');
-    if (!await file.exists()) return;
-    String? version;
-    try {
-      final data =
-          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-      version = data['version'] as String?;
-    } catch (_) {}
-    try {
-      await file.delete();
-    } catch (_) {}
-    if (version == null) return;
-    final context = await _waitForContext();
-    if (context == null || !context.mounted) return;
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(
-        content: Text(
-          L.t(
-            'Commsuite updated to v$version.',
-            ru: 'Commsuite обновлён до v$version.',
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Waits (bounded) until the widget tree has a context to show a snackbar.
-  Future<BuildContext?> _waitForContext() async {
-    for (var i = 0; i < 30; i++) {
-      final ctx = navigatorKey.currentContext;
-      if (ctx != null) return ctx;
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-    }
-    return null;
   }
 }

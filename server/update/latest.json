@@ -1,22 +1,22 @@
 {
     "installer":  "/update/commsuite-setup.exe",
-    "version":  "1.0.34",
+    "version":  "1.0.35",
     "apk":  "/update/commsuite.apk",
-    "apkSize":  95093939,
+    "apkSize":  95012019,
     "mirrors":  {
-                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.34/commsuite-linux-1.0.34.tar.gz",
-                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.34/commsuite-setup.exe",
-                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.34/commsuite.apk"
+                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.35/commsuite-linux-1.0.35.tar.gz",
+                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.35/commsuite-setup.exe",
+                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.35/commsuite.apk"
                 },
-    "apkVersion":  "1.0.34",
-    "publishedAt":  1791562193471,
-    "installerSize":  22998858,
-    "linux":  "/update/commsuite-linux-1.0.34.tar.gz",
-    "installerSha256":  "0f09cfc93b579ba3d22094e15ae3d40b183e79a41a485fea72ff60e3df8fe96a",
-    "linuxSha256":  "d233546233a6400b5b7c1c1549991581525de71c8ac0c8e6ea18e7fdf7984e4d",
-    "windowsVersion":  "1.0.34",
-    "notes":  "Single-instance guard: blocks a second commsuite.exe from fighting over the WebView2 user-data folder (the cause of \u0027Cannot create the InAppWebView instance!\u0027). Also stops packaging per-machine WebView2 profile data in the installer.",
-    "apkSha256":  "84017f19fff5a5ec8d7cd434b0a6303fa441468929d2c96304a6ab4ab5464364",
-    "linuxSize":  20867501,
-    "linuxVersion":  "1.0.34"
+    "apkVersion":  "1.0.35",
+    "publishedAt":  1791563060078,
+    "installerSize":  22990657,
+    "linux":  "/update/commsuite-linux-1.0.35.tar.gz",
+    "installerSha256":  "72564eab571ff1c8c920e48f6b41c43e502fb4e950f46fc5face07141402ce6d",
+    "linuxSha256":  "d7771fd7ab2cedf27bad2367a005dadad2858ceef3e32ff8b6ca6a21ecc5b172",
+    "windowsVersion":  "1.0.35",
+    "notes":  "Removed auto-update. The silent updater killed the running app and corrupted the WebView2 state (\u0027Cannot create the InAppWebView instance!\u0027); updates now always require explicit confirmation, and installs delete the legacy updater task and stale update markers.",
+    "apkSha256":  "1ea039035b7e73d4627926934211d7c77cc28bb3533650746292dd9348141285",
+    "linuxSize":  20868573,
+    "linuxVersion":  "1.0.35"
 }
