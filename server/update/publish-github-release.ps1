@@ -5,7 +5,8 @@ param(
   [string]$Installer = "",            # defaults to <root>\update\commsuite-setup.exe
   [string]$Apk = "",
   [string]$Linux = "",
-  [string]$Token = ""                 # falls back to $env:COMMSUITE_GH_TOKEN
+  [string]$Token = "",                 # falls back to $env:COMMSUITE_GH_TOKEN
+  [switch]$SkipSha256                  # do not attach the SHA256SUMS asset
 )
 # Publishes the release artifacts to GitHub Releases and prints the URLs to feed
 # publish-manifest.ps1 as *Mirror parameters, so clients download from a host
@@ -100,13 +101,17 @@ if ($Apk -and (Test-Path -LiteralPath $Apk)) { $assets += (Get-Item -LiteralPath
 if ($Linux -and (Test-Path -LiteralPath $Linux)) { $assets += (Get-Item -LiteralPath $Linux) }
 if ($assets.Count -eq 0) { throw "No artifacts found to publish (checked installer '$Installer', apk '$Apk', linux '$Linux')" }
 
-# SHA256SUMS so the release is verifiable by hand.
-$sums = Join-Path $env:TEMP "commsuite-sha256sums-$Version.txt"
+# SHA256SUMS so the release is verifiable by hand (opt-out via -SkipSha256).
 $lines = foreach ($a in $assets) {
   "$((Get-FileHash -LiteralPath $a.FullName -Algorithm SHA256).Hash.ToLower())  $($a.Name)"
 }
-Set-Content -LiteralPath $sums -Value $lines -Encoding ascii
-$assets += (Get-Item -LiteralPath $sums)
+if ($SkipSha256) {
+  Write-Output "skipping SHA256SUMS asset (-SkipSha256)"
+} else {
+  $sums = Join-Path $env:TEMP "commsuite-sha256sums-$Version.txt"
+  Set-Content -LiteralPath $sums -Value $lines -Encoding ascii
+  $assets += (Get-Item -LiteralPath $sums)
+}
 
 # Replace assets with the same name (re-running a release must overwrite).
 $existing = @{}
@@ -151,4 +156,4 @@ if ($assets | Where-Object { $_.Name -eq 'commsuite-setup.exe' }) { $args += @('
 if ($assets | Where-Object { $_.Name -eq 'commsuite.apk' }) { $args += @('-ApkMirror', $base) }
 if ($assets | Where-Object { $_.Name -like 'commsuite-linux-*' }) { $args += @('-LinuxMirror', $base) }
 Write-Output "  .\publish-manifest.ps1 $($args -join ' ')"
-Remove-Item -LiteralPath $sums -Force -ErrorAction SilentlyContinue
+if ($sums) { Remove-Item -LiteralPath $sums -Force -ErrorAction SilentlyContinue }

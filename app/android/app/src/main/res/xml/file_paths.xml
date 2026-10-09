@@ -2,6 +2,7 @@
 <paths>
     <cache-path name="cache" path="."/>
     <files-path name="files" path="."/>
+    <files-path name="app_flutter" path="app_flutter/"/>
     <external-path name="external" path="."/>
     <external-files-path name="external_files" path="."/>
 </paths>

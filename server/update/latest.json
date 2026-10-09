@@ -1,22 +1,22 @@
 {
     "installer":  "/update/commsuite-setup.exe",
-    "version":  "1.0.30",
+    "version":  "1.0.31",
     "apk":  "/update/commsuite.apk",
-    "apkSize":  92848492,
+    "apkSize":  95015971,
     "mirrors":  {
-                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.30/commsuite-linux-1.0.30.tar.gz",
-                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.30/commsuite-setup.exe",
-                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.30/commsuite.apk"
+                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.31/commsuite-linux-1.0.31.tar.gz",
+                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.31/commsuite-setup.exe",
+                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.31/commsuite.apk"
                 },
-    "apkVersion":  "1.0.30",
-    "publishedAt":  1790538262028,
-    "installerSize":  38729440,
-    "linux":  "/update/commsuite-linux-1.0.30.tar.gz",
-    "installerSha256":  "20db2c0a3df8edab20de11b64a4f1dfd36c1cfc028c0a1800d0f2d3299755da7",
-    "linuxSha256":  "183147c91eeea15e2ab2bcd1f9f6a12af880365dfc76de988083a7b06d6b74e4",
-    "windowsVersion":  "1.0.30",
-    "notes":  "Updater: fall back to mirror URLs (GitHub Releases) when the primary host is unreachable or blocked; VirusTotal proxy parsing and error reporting unchanged. All artifacts include SHA256SUMS.",
-    "apkSha256":  "a41efa1a624b99ca553b3b2d4303ec08a94c42d4515426b7318442796f3a05e5",
-    "linuxSize":  20453488,
-    "linuxVersion":  "1.0.30"
+    "apkVersion":  "1.0.31",
+    "publishedAt":  1791556334035,
+    "installerSize":  39106783,
+    "linux":  "/update/commsuite-linux-1.0.31.tar.gz",
+    "installerSha256":  "2a607a69ad87059c047947b4aa8315b8d9dbaab16d490b7d6f4b335b566c95c9",
+    "linuxSha256":  "9034ad0724992d753aec47c080f63497c5e6fd55c0c957728134407a1fb045f5",
+    "windowsVersion":  "1.0.31",
+    "notes":  "1.0.31: Russian UI (RU system-language auto-detect + Settings toggle), new brand icon set on Windows/Android, RuStore-ready release signing, browser Downloads tab, and minor fixes.",
+    "apkSha256":  "8850eba9c50db0700adb734767597961e0c024ee6498d87a8b3f85dc9a6b2127",
+    "linuxSize":  20862475,
+    "linuxVersion":  "1.0.31"
 }

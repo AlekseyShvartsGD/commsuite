@@ -14,6 +14,7 @@ import java.io.File
 class MainActivity : FlutterActivity() {
     private val channelName = "commsuite/updater"
     private val notifyChannelName = "commsuite/notify"
+    private val shareChannelName = "commsuite/files"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -43,6 +44,39 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, shareChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "shareFile" -> {
+                        result.success(
+                            shareFile(call.argument<String>("path"), call.argument<String>("name"))
+                        )
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    private fun shareFile(path: String?, name: String?): Boolean {
+        if (path == null) return false
+        val file = File(path)
+        if (!file.exists()) return false
+        return try {
+            val uri = FileProvider.getUriForFile(
+                applicationContext,
+                "$packageName.fileprovider",
+                file
+            )
+            val intent = Intent(Intent.ACTION_SEND)
+                .setType("*/*")
+                .putExtra(Intent.EXTRA_STREAM, uri)
+                .putExtra(Intent.EXTRA_TITLE, name ?: file.name)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(Intent.createChooser(intent, null))
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun bringToFront(): Boolean {
