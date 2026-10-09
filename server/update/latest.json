@@ -1,22 +1,22 @@
 {
     "installer":  "/update/commsuite-setup.exe",
-    "version":  "1.0.33",
+    "version":  "1.0.34",
     "apk":  "/update/commsuite.apk",
     "apkSize":  95093939,
     "mirrors":  {
-                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.33/commsuite-linux-1.0.33.tar.gz",
-                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.33/commsuite-setup.exe",
-                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.33/commsuite.apk"
+                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.34/commsuite-linux-1.0.34.tar.gz",
+                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.34/commsuite-setup.exe",
+                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.34/commsuite.apk"
                 },
-    "apkVersion":  "1.0.33",
-    "publishedAt":  1791560328531,
-    "installerSize":  40255975,
-    "linux":  "/update/commsuite-linux-1.0.33.tar.gz",
-    "installerSha256":  "596d2366b19eef096f6853d00c35863583aecadc6251a92621f38bd9fead44a4",
-    "linuxSha256":  "5f0760d0a89aa3754b61ccbfc8dcbf6df8386ba2e6dcb2ee6c6a88a641ae8fb1",
-    "windowsVersion":  "1.0.33",
-    "notes":  "1.0.33: Browser tab starts WebView2 only when opened; checks the WebView2 Runtime; falls back to the system browser with a clear message + retry.",
-    "apkSha256":  "f744e391ae468f423a6c70f4e19b14d09bd8a3a9dbaead2e2dc5e1c47366f7b3",
-    "linuxSize":  20867466,
-    "linuxVersion":  "1.0.33"
+    "apkVersion":  "1.0.34",
+    "publishedAt":  1791562193471,
+    "installerSize":  22998858,
+    "linux":  "/update/commsuite-linux-1.0.34.tar.gz",
+    "installerSha256":  "0f09cfc93b579ba3d22094e15ae3d40b183e79a41a485fea72ff60e3df8fe96a",
+    "linuxSha256":  "d233546233a6400b5b7c1c1549991581525de71c8ac0c8e6ea18e7fdf7984e4d",
+    "windowsVersion":  "1.0.34",
+    "notes":  "Single-instance guard: blocks a second commsuite.exe from fighting over the WebView2 user-data folder (the cause of \u0027Cannot create the InAppWebView instance!\u0027). Also stops packaging per-machine WebView2 profile data in the installer.",
+    "apkSha256":  "84017f19fff5a5ec8d7cd434b0a6303fa441468929d2c96304a6ab4ab5464364",
+    "linuxSize":  20867501,
+    "linuxVersion":  "1.0.34"
 }
