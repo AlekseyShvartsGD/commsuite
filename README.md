@@ -9,7 +9,7 @@ Self-hosted chat suite for **Android and Windows** (Flutter) with a custom Node.
 - Presence (online/offline) and a persistent accounts database
 
 ```
-alekz/
+commsuite/
 ├── server/   Node.js API + WebSocket signaling server (SQLite)
 └── app/      Flutter app (Android + Windows)
 ```
@@ -78,75 +78,17 @@ flutter run -d <android-device>   # phone/emulator
 - **NuGet**: `flutter_inappwebview_windows` needs `nuget.exe` on PATH; `tools/nuget/nuget.exe` is installed and added to the user PATH.
 - Calls rely on Google STUN only; if two devices are behind restrictive NATs, add a TURN server in `app/lib/services/webrtc_service.dart`.
 
-### Calls over TCP-only networks (CloudPub + TURN relay)
+### Calls on UDP-blocked networks (TURN relay)
 
-Works when the client network blocks UDP entirely (e.g. a corporate NAT) and there is
-no public server. Two CloudPub tunnels are registered on the account, and a single
-`clo run` agent carries **both** simultaneously:
+If the two devices are behind restrictive NATs or a network that blocks UDP,
+configure a relay in **Settings → Calls (TURN relay)** (host / port / user /
+pass). With a relay saved, the app sets `iceTransportPolicy: 'relay'`, so media
+is carried over TCP. Leave the fields empty to fall back to direct STUN.
 
-- **http tunnel** → signaling (HTTPS API + WSS websocket) → node `:3000`
-- **tcp tunnel** → TURN/STUN media over TCP → coturn `:3478`
-
-> CloudPub provides only one live agent/tunnel-view per account, but the service
-> **registry** (`clo register`) is per-account and persistent: registered endpoints
-> keep their fixed public addresses across restarts, and one agent serves them all.
-> (Separate `clo publish` runs would each open their own agent and close the other's
-> channels.) Plain HTTP **cannot** ride the tcp tunnel — CloudPub blackholes streams
-> that begin with HTTP method words (GET/HEAD/POST) while binary/TLS pass through —
-> which is exactly why signaling uses its own https tunnel.
-
-Architecture (all inside WSL2 Ubuntu, so no Windows↔WSL networking is needed):
-
-```
-                     public                  local WSL2
-phone A ── HTTPS/WS ─▶ https://…cloudpub.ru ───────────────▶ node  :3000
-phone B ── TURN/TCP ─▶ tcp://tcp.cloudpub.ru:PORT ─────────▶ coturn :3478
-```
-
-One-time WSL2 setup:
-
-```bash
-wsl -d Ubuntu -- sudo apt-get install -y coturn                          # TURN server
-wsl -d Ubuntu -u root -- systemctl disable --now coturn                  # avoid systemd's stale second instance
-wsl -d Ubuntu -- /mnt/c/Users/aleks/Desktop/alekz/tools/cloudpub-linux/clo login
-wsl -d Ubuntu -- sh -c "cd /mnt/c/Users/aleks/Desktop/alekz/server && npm ci"   # Linux build of deps
-```
-
-Start everything (TURN + Node + mux + the single CloudPub agent), then read the endpoints:
-
-```powershell
-.\server\turn\start-all.ps1
-wsl -d Ubuntu -- sh -c "grep cloudpub.ru /tmp/commsuite-logs/clo-run.log | tail -2"
-```
-
-Example output → app settings (endpoints are **stable** once registered; they survive restart):
-
-| app setting | value |
-|-------------|-------|
-| Settings → Server address | `https://immutably-undamaged-tortoise.cloudpub.ru` (from the http line) |
-| Settings → Calls (TURN): host / port | `tcp.cloudpub.ru` / `20653` (from the tcp line) |
-| Settings → Calls (TURN): user / pass | `commsuite` / `commsuite-1` |
-
-With a TURN relay saved, the app sets `iceTransportPolicy: 'relay'` and uses
-`turn:tcp.cloudpub.ru:<port>?transport=tcp`, so media is carried over TCP.
-Leave the TURN fields empty to fall back to direct STUN. Your phone and PC must
-use the same account/who-can-call ACLs set in the app.
-
-Checks (all inside WSL):
-
-```bash
-bash server/turn/status.sh             # processes, sockets, public endpoints
-bash server/turn/verify-mux.sh         # HTTP + TURN through the local mux
-bash server/turn/verify-public.sh tcp.cloudpub.ru 20653   # TURN through the public tunnel
-```
-
-> Note: the current public setup is cleartext (plain TURN over TCP; HTTPS is
-> CloudPub's own TLS so signaling IS encrypted). TURN media passes through
-> CloudPub's relay without extra TLS.
-
-- TURN credentials are hard-coded in `server/turn/turnserver.conf` (`commsuite:commsuite-1`); change them there and in the app settings together.
-- `server/turn/` also contains `turnserver.conf`, `mux.js`, `start-turn.sh`/`start-turn.ps1` (relay only), `start-all.sh`/`start-all.ps1`, `status.sh`, `restart-node.sh`.
-- If a `turnserver` started earlier as root still holds :3478, stop it with: `wsl -d Ubuntu -u root -- pkill -x turnserver`.
+- `server/turn/` contains a coturn setup: `turnserver.conf`, `mux.js`, and
+  start / status / verify scripts.
+- If a `turnserver` started earlier as root still holds :3478, stop it with:
+  `wsl -d Ubuntu -u root -- pkill -x turnserver`.
 
 ### Tests / checks
 
