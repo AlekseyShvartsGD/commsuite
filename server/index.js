@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import authRouter, { authMiddleware } from './auth.js';
 import chatRouter from './chat.js';
 import { attachRealtime, onlineUserIds } from './realtime.js';
-import { publicUser } from './db.js';
+import { publicUser, sweepOrphanAttachments } from './db.js';
 import db from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -45,4 +45,11 @@ server.listen(PORT, '0.0.0.0', () => {
   const users = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
   console.log(`Commsuite server on http://0.0.0.0:${PORT}  (users: ${users})`);
   console.log(`WebSocket endpoint: ws://0.0.0.0:${PORT}/ws?token=<jwt>`);
+
+  const swept = sweepOrphanAttachments();
+  if (swept > 0) console.log(`Attachments: swept ${swept} orphaned file(s)`);
+  setInterval(() => {
+    const n = sweepOrphanAttachments();
+    if (n > 0) console.log(`Attachments: swept ${n} orphaned file(s)`);
+  }, 24 * 60 * 60 * 1000).unref();
 });

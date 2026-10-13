@@ -9,12 +9,14 @@ import 'core/localizations.dart';
 import 'core/navigation.dart';
 import 'services/comms_controller.dart';
 import 'services/crash_reporter.dart';
+import 'services/lock_service.dart';
 import 'services/server_auto_starter.dart';
 import 'services/tray_service.dart';
 import 'services/update_service.dart';
 import 'screens/auth_screen.dart';
 import 'screens/home_shell.dart';
 import 'screens/server_redirect_screen.dart';
+import 'widgets/passcode_lock.dart';
 
 class CommsScope extends InheritedNotifier<CommsController> {
   const CommsScope({
@@ -44,6 +46,7 @@ class CommsApp extends StatefulWidget {
 
 class _CommsAppState extends State<CommsApp> with WidgetsBindingObserver {
   late final CommsController controller;
+  bool _wasBackgrounded = false;
 
   @override
   void initState() {
@@ -65,8 +68,16 @@ class _CommsAppState extends State<CommsApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      _wasBackgrounded = true;
+      return;
+    }
     if (state == AppLifecycleState.resumed && mounted) {
       controller.reconnectIfNeeded();
+      if (_wasBackgrounded) {
+        _wasBackgrounded = false;
+        LockService.instance.lockNow();
+      }
     }
   }
 
@@ -120,7 +131,7 @@ class _CommsAppState extends State<CommsApp> with WidgetsBindingObserver {
             themeMode: ThemeMode.system,
             home: const _Root(),
             builder: (context, child) =>
-                Stack(children: [?child, const _ErrorBanner()]),
+                Stack(children: [?child, const _ErrorBanner(), const _LockGate()]),
           );
         },
       ),
@@ -307,5 +318,32 @@ class _Root extends StatelessWidget {
       return const AuthScreen();
     }
     return const HomeShell();
+  }
+}
+
+/// Full-screen app lock drawn above everything when [LockService] has a
+/// passcode enabled and the session is not unlocked yet.
+class _LockGate extends StatelessWidget {
+  const _LockGate();
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: LockService.instance,
+      builder: (context, _) {
+        final lock = LockService.instance;
+        if (!lock.locked) return const SizedBox.shrink();
+        return PasscodeLock(
+          title: L.t('Commsuite is locked', ru: 'Commsuite заблокирован'),
+          subtitle: L.t(
+            'Enter your Enigma passcode to continue',
+            ru: 'Введите кодовую фразу Enigma',
+          ),
+          verify: (passcode) async => lock.verifyPasscode(passcode),
+          biometric: lock.biometricSupported ? lock.authenticateBiometric : null,
+          onUnlocked: lock.markUnlocked,
+        );
+      },
+    );
   }
 }

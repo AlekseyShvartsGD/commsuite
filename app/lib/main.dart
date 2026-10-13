@@ -8,6 +8,7 @@ import 'app.dart';
 import 'core/app_config.dart';
 import 'core/localizations.dart';
 import 'services/crash_reporter.dart';
+import 'services/lock_service.dart';
 import 'services/tray_service.dart';
 
 Future<void> main() async {
@@ -43,6 +44,7 @@ Future<void> main() async {
     // Restore the saved UI language before anything builds.
     await AppConfig.init();
     L.setLang(await AppConfig.loadLanguage());
+    await LockService.instance.init();
     await TrayService.instance.initWindow();
     runApp(const CommsApp());
   }, (error, stack) => _logError('$error', stack));

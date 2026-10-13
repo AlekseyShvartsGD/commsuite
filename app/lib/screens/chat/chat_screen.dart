@@ -9,8 +9,11 @@ import '../../models.dart';
 import '../../services/attachment_helper.dart';
 import '../../services/comms_controller.dart';
 import '../../services/file_service.dart';
+import '../../services/lock_service.dart';
 import '../../services/url_service.dart';
 import '../../services/virustotal.dart';
+import '../../widgets/passcode_lock.dart';
+import '../../widgets/passcode_setup.dart';
 import '../../widgets/user_avatar.dart';
 import '../browser/scan_result_dialog.dart';
 import '../call/call_screen.dart';
@@ -143,6 +146,50 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: LockService.instance,
+      builder: (context, _) {
+        if (LockService.instance.chatNeedsUnlock(conversation.id)) {
+          return PasscodeLock(
+            title: L.t('This chat is locked', ru: 'Чат заблокирован'),
+            subtitle: conversation.title,
+            icon: Icons.lock,
+            verify: (passcode) async =>
+                LockService.instance.verifyPasscode(passcode),
+            biometric: LockService.instance.biometricSupported
+                ? LockService.instance.authenticateBiometric
+                : null,
+            onUnlocked: () =>
+                LockService.instance.grantChatAccess(conversation.id),
+            onCancel: () => Navigator.of(context).maybePop(),
+          );
+        }
+        return _buildChat(context);
+      },
+    );
+  }
+
+  Future<void> _toggleChatLock() async {
+    final lock = LockService.instance;
+    if (!lock.hasPasscode) {
+      final created = await showPasscodeSetupDialog(context);
+      if (!created) return;
+    }
+    final wasLocked = lock.isChatLocked(conversation.id);
+    await lock.toggleChatLock(conversation.id);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          wasLocked
+              ? L.t('Chat unlocked', ru: 'Чат разблокирован')
+              : L.t('Chat locked', ru: 'Чат заблокирован'),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChat(BuildContext context) {
     final controller = CommsScope.of(context);
     final peer = conversation.peer;
     final isGroup = conversation.isGroup;
@@ -237,6 +284,17 @@ class _ChatScreenState extends State<ChatScreen> {
               onPressed: () => _makeCall(true),
             ),
           ],
+          IconButton(
+            tooltip: LockService.instance.isChatLocked(conversation.id)
+                ? L.t('Unlock chat', ru: 'Снять блокировку')
+                : L.t('Lock chat', ru: 'Заблокировать чат'),
+            icon: Icon(
+              LockService.instance.isChatLocked(conversation.id)
+                  ? Icons.lock
+                  : Icons.lock_open,
+            ),
+            onPressed: _toggleChatLock,
+          ),
         ],
       ),
       body: Column(

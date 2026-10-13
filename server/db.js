@@ -370,4 +370,82 @@ export function attachmentRowToPublic(row) {
   };
 }
 
+const attachmentIdStmt = db.prepare(
+  'SELECT attachment_id FROM messages WHERE conversation_id = ? AND attachment_id IS NOT NULL'
+);
+const attachmentReferencedStmt = db.prepare(
+  'SELECT 1 FROM messages WHERE attachment_id = ? LIMIT 1'
+);
+
+/// Attachment ids referenced by any message still in [conversationId]. The
+/// message rows must be read before the conversation (and its messages via
+/// ON DELETE CASCADE) is removed.
+export function attachmentIdsForConversation(conversationId) {
+  return attachmentIdStmt.all(conversationId).map((r) => r.attachment_id);
+}
+
+/// Deletes the file on disk and the row for [id]. Forwarded messages can share
+/// one attachment, so only call this once nothing references it anymore.
+function deleteAttachmentRow(id) {
+  const row = db.prepare('SELECT path FROM attachments WHERE id = ?').get(id);
+  if (!row) return;
+  db.prepare('DELETE FROM attachments WHERE id = ?').run(id);
+  try {
+    fs.unlinkSync(row.path);
+  } catch {
+    // file already gone; the row removal is what matters
+  }
+}
+
+/// Removes each attachment in [ids] that no message references anymore.
+export function deleteAttachmentsIfUnreferenced(ids) {
+  const tx = db.transaction((list) => {
+    for (const id of new Set(list.filter(Boolean))) {
+      if (!attachmentReferencedStmt.get(id)) deleteAttachmentRow(id);
+    }
+  });
+  tx(ids);
+}
+
+/// Startup / periodic sweep: drops attachment rows nothing references and any
+/// stray files in uploadsDir with no row. [graceMs] protects uploads that were
+/// just created but not yet linked to a message.
+export function sweepOrphanAttachments(graceMs = 60 * 60 * 1000) {
+  const cutoff = Date.now() - graceMs;
+  let removed = 0;
+
+  const orphans = db
+    .prepare(
+      `SELECT id FROM attachments a
+       WHERE a.created_at < ? AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.attachment_id = a.id)`
+    )
+    .all(cutoff);
+  const tx = db.transaction((rows) => {
+    for (const row of rows) {
+      deleteAttachmentRow(row.id);
+      removed++;
+    }
+  });
+  tx(orphans);
+
+  try {
+    const known = new Set(db.prepare('SELECT path FROM attachments').all().map((r) => path.resolve(r.path)));
+    for (const name of fs.readdirSync(uploadsDir)) {
+      const full = path.join(uploadsDir, name);
+      try {
+        const st = fs.statSync(full);
+        if (st.isFile() && st.mtimeMs < cutoff && !known.has(path.resolve(full))) {
+          fs.unlinkSync(full);
+          removed++;
+        }
+      } catch {
+        // racing removal/rename; ignore
+      }
+    }
+  } catch {
+    // uploadsDir unreadable; nothing to sweep
+  }
+  return removed;
+}
+
 export default db;

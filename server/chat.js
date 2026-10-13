@@ -14,6 +14,8 @@ import db, {
   publicUser,
   publicMessage,
   attachmentRowToPublic,
+  attachmentIdsForConversation,
+  deleteAttachmentsIfUnreferenced,
 } from './db.js';
 import { notifyUser } from './realtime.js';
 
@@ -660,7 +662,9 @@ router.delete('/conversations/:id/members/:userId', (req, res) => {
         next.user_id
       );
     } else {
+      const orphaned = attachmentIdsForConversation(conversation.id);
       db.prepare('DELETE FROM conversations WHERE id = ?').run(conversation.id);
+      deleteAttachmentsIfUnreferenced(orphaned);
       deleted = true;
     }
   }
@@ -744,7 +748,9 @@ router.delete('/conversations/:id', (req, res) => {
   if (groupRole(conversation.id, me) !== 'owner')
     return res.status(403).json({ error: 'only the owner can delete the group' });
 
+  const orphaned = attachmentIdsForConversation(conversation.id);
   db.prepare('DELETE FROM conversations WHERE id = ?').run(conversation.id);
+  deleteAttachmentsIfUnreferenced(orphaned);
   broadcastGroup(
     conversation,
     { type: 'group-deleted', conversationId: conversation.id },
@@ -857,9 +863,11 @@ router.delete('/messages/:id', (req, res) => {
     return res.status(403).json({ error: 'only the sender can delete a message' });
   if (msg.deleted) return res.status(400).json({ error: 'message already deleted' });
 
+  const attachmentId = msg.attachment_id;
   db.prepare(
     'UPDATE messages SET deleted = 1, body = NULL, attachment_id = NULL, pinned_at = NULL WHERE id = ?'
   ).run(msg.id);
+  deleteAttachmentsIfUnreferenced([attachmentId]);
   const updated = publicMessage(db.prepare('SELECT * FROM messages WHERE id = ?').get(msg.id));
   broadcastGroup(conversation, { type: 'message-deleted', conversationId: conversation.id, message: updated }, me);
   res.json({ message: updated });
@@ -975,7 +983,9 @@ router.delete('/conversations/:id/messages', (req, res) => {
   if (!conversation || !assertParticipant(conversation, me))
     return res.status(404).json({ error: 'conversation not found' });
 
+  const attachmentIds = attachmentIdsForConversation(conversation.id);
   db.prepare('DELETE FROM messages WHERE conversation_id = ?').run(conversation.id);
+  deleteAttachmentsIfUnreferenced(attachmentIds);
   res.json({ ok: true });
 });
 

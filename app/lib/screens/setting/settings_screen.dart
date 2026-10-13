@@ -5,6 +5,8 @@ import '../../core/app_config.dart';
 import '../../core/app_version.dart';
 import '../../core/localizations.dart';
 import '../../services/autostart_service.dart';
+import '../../services/lock_service.dart';
+import '../../widgets/passcode_setup.dart';
 import '../../widgets/user_avatar.dart';
 import '../mod/mod_reports_screen.dart';
 import '../mod/mod_banned_screen.dart';
@@ -154,6 +156,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     L.setLang(code);
     await AppConfig.setLanguage(code);
     if (mounted) setState(() {});
+  }
+
+  Future<void> _toggleAppLock(bool value) async {
+    final lock = LockService.instance;
+    if (value && !lock.hasPasscode) {
+      final created = await showPasscodeSetupDialog(context);
+      if (!created) return;
+    }
+    await lock.setEnabled(value);
+  }
+
+  Future<void> _setPasscode() async {
+    await showPasscodeSetupDialog(context);
   }
 
   Future<void> _logout() async {
@@ -424,6 +439,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: _saveVtKey,
             icon: const Icon(Icons.save_outlined),
             label: Text(L.t('Save key', ru: 'Сохранить ключ')),
+          ),
+          const SizedBox(height: 24),
+          Text(L.t('App lock (Enigma)', ru: 'Блокировка (Enigma)'),
+              style: theme.textTheme.titleSmall),
+          const SizedBox(height: 8),
+          ListenableBuilder(
+            listenable: LockService.instance,
+            builder: (context, _) {
+              final lock = LockService.instance;
+              return Column(
+                children: [
+                  Card(
+                    child: SwitchListTile(
+                      secondary: const Icon(Icons.lock_outline),
+                      title: Text(L.t('Lock the app', ru: 'Блокировать приложение')),
+                      subtitle: Text(L.t(
+                        'Ask for an Enigma passcode on launch and when you return',
+                        ru: 'Спрашивать кодовую фразу Enigma при запуске и возврате',
+                      )),
+                      value: lock.enabled && lock.hasPasscode,
+                      onChanged: _toggleAppLock,
+                    ),
+                  ),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.key_outlined),
+                      title: Text(L.t('Set / change passcode',
+                          ru: 'Задать / изменить кодовую фразу')),
+                      subtitle: Text(lock.hasPasscode
+                          ? L.t('Passcode set', ru: 'Код задан')
+                          : L.t('No passcode yet', ru: 'Код ещё не задан')),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: _setPasscode,
+                    ),
+                  ),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.lock_clock),
+                      title: Text(L.t('Lock a chat', ru: 'Заблокировать чат')),
+                      subtitle: Text(L.t(
+                        'Open a chat and tap the lock icon in the toolbar',
+                        ru: 'Откройте чат и нажмите значок замка на панели',
+                      )),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 24),
           Text(L.t('App', ru: 'Приложение'), style: theme.textTheme.titleSmall),

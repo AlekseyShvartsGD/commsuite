@@ -1,22 +1,22 @@
 {
     "installer":  "/update/commsuite-setup.exe",
-    "version":  "1.0.35",
+    "version":  "1.0.36",
     "apk":  "/update/commsuite.apk",
-    "apkSize":  95012019,
+    "apkSize":  95396467,
     "mirrors":  {
-                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.35/commsuite-linux-1.0.35.tar.gz",
-                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.35/commsuite-setup.exe",
-                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.35/commsuite.apk"
+                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.36/commsuite-linux-1.0.36.tar.gz",
+                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.36/commsuite-setup.exe",
+                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.36/commsuite.apk"
                 },
-    "apkVersion":  "1.0.35",
-    "publishedAt":  1791563060078,
-    "installerSize":  22990657,
-    "linux":  "/update/commsuite-linux-1.0.35.tar.gz",
-    "installerSha256":  "72564eab571ff1c8c920e48f6b41c43e502fb4e950f46fc5face07141402ce6d",
-    "linuxSha256":  "d7771fd7ab2cedf27bad2367a005dadad2858ceef3e32ff8b6ca6a21ecc5b172",
-    "windowsVersion":  "1.0.35",
-    "notes":  "Removed auto-update. The silent updater killed the running app and corrupted the WebView2 state (\u0027Cannot create the InAppWebView instance!\u0027); updates now always require explicit confirmation, and installs delete the legacy updater task and stale update markers.",
-    "apkSha256":  "1ea039035b7e73d4627926934211d7c77cc28bb3533650746292dd9348141285",
-    "linuxSize":  20868573,
-    "linuxVersion":  "1.0.35"
+    "apkVersion":  "1.0.36",
+    "publishedAt":  1791914284499,
+    "installerSize":  23073566,
+    "linux":  "/update/commsuite-linux-1.0.36.tar.gz",
+    "installerSha256":  "d6a02afb42e64ba51e6da2e555562277f01ca1bee2c58bc6ca34ba6e06f2a51f",
+    "linuxSha256":  "a1b287eb85fa71b7965876dc40795ae746cd5d4b3a930cf0a57dcc0ff43ad76d",
+    "windowsVersion":  "1.0.36",
+    "notes":  "Commsuite 1.0.36\n- App lock: Enigma passcode (letters A-Z) at launch and per-chat, fingerprint on Android\n- Lock any chat from its toolbar; set/change passcode in Settings\n- Server deletes attachment files when messages or chats are deleted/cleared, plus a daily orphan sweep\n- Restored original app icon artwork",
+    "apkSha256":  "cc23edc904e6736af38d614acaf18067318e4a7629fa5ee65c8326a6d9424669",
+    "linuxSize":  20879505,
+    "linuxVersion":  "1.0.36"
 }
