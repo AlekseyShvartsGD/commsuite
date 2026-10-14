@@ -29,12 +29,20 @@ class PasscodeLock extends StatefulWidget {
 
 class _PasscodeLockState extends State<PasscodeLock> {
   final _controller = TextEditingController();
+  final _focusNode = FocusNode();
   String? _error;
   bool _busy = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -51,12 +59,17 @@ class _PasscodeLockState extends State<PasscodeLock> {
     if (ok) {
       setState(() => _busy = false);
       widget.onUnlocked();
-    } else {
-      setState(() {
-        _busy = false;
-        _error = L.t('Incorrect passcode', ru: 'Неверный код');
-      });
+      return;
     }
+    setState(() {
+      _busy = false;
+      _error = L.t('Incorrect passcode', ru: 'Неверный код');
+      _controller.clear();
+    });
+    // Ensure focus stays in the input so typing feels normal.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
   }
 
   Future<void> _biometric() async {
@@ -113,7 +126,8 @@ class _PasscodeLockState extends State<PasscodeLock> {
                   const SizedBox(height: 24),
                   TextField(
                     controller: _controller,
-                    autofocus: widget.onCancel == null,
+                    focusNode: _focusNode,
+                    autofocus: true,
                     obscureText: true,
                     enabled: !_busy,
                     textInputAction: TextInputAction.done,

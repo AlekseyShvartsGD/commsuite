@@ -119,4 +119,9 @@ class LockService extends ChangeNotifier {
     if (!_lockedChats.contains(id)) return;
     if (_sessionUnlockedChats.add(id)) notifyListeners();
   }
+
+  /// Drops the in-session unlock for [id] so the next open asks again.
+  void revokeChatAccess(String id) {
+    if (_sessionUnlockedChats.remove(id)) notifyListeners();
+  }
 }

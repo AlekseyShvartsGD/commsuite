@@ -333,15 +333,20 @@ class _LockGate extends StatelessWidget {
       builder: (context, _) {
         final lock = LockService.instance;
         if (!lock.locked) return const SizedBox.shrink();
-        return PasscodeLock(
-          title: L.t('Commsuite is locked', ru: 'Commsuite заблокирован'),
-          subtitle: L.t(
-            'Enter your Enigma passcode to continue',
-            ru: 'Введите кодовую фразу Enigma',
+        return Navigator(
+          onGenerateRoute: (_) => MaterialPageRoute<void>(
+            builder: (_) => PasscodeLock(
+              title: L.t('Commsuite is locked', ru: 'Commsuite заблокирован'),
+              subtitle: L.t(
+                'Enter your Enigma passcode to continue',
+                ru: 'Введите кодовую фразу Enigma',
+              ),
+              verify: (passcode) async => lock.verifyPasscode(passcode),
+              biometric:
+                  lock.biometricSupported ? lock.authenticateBiometric : null,
+              onUnlocked: lock.markUnlocked,
+            ),
           ),
-          verify: (passcode) async => lock.verifyPasscode(passcode),
-          biometric: lock.biometricSupported ? lock.authenticateBiometric : null,
-          onUnlocked: lock.markUnlocked,
         );
       },
     );

@@ -11,9 +11,32 @@ import '../models.dart';
 import '../core/localizations.dart';
 
 class AttachmentHelper {
-  static Future<String?> download(String token, Attachment attachment) async {
+  static const _imageExtensions = <String>{
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.gif',
+    '.webp',
+    '.bmp',
+    '.heic',
+    '.heif',
+    '.avif',
+  };
+
+  /// True when the attachment should be shown as an inline image preview.
+  static bool isImage(Attachment attachment) {
+    if (attachment.mime.toLowerCase().startsWith('image/')) return true;
+    return _imageExtensions.contains(p.extension(attachment.name).toLowerCase());
+  }
+
+  /// Where an attachment is stored once downloaded.
+  static Future<File> localFile(Attachment attachment) async {
     final dir = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dir.path, p.basename(attachment.name)));
+    return File(p.join(dir.path, p.basename(attachment.name)));
+  }
+
+  static Future<String?> download(String token, Attachment attachment) async {
+    final file = await localFile(attachment);
     if (!file.existsSync()) {
       final uri = Uri.parse(Api.attachmentUrl(attachment.url));
       final resp = await http.get(
@@ -37,8 +60,7 @@ class AttachmentHelper {
   ) async {
     final error = await download(token, attachment);
     if (error != null) return error;
-    final dir = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dir.path, p.basename(attachment.name)));
+    final file = await localFile(attachment);
     final result = await OpenFilex.open(file.path);
     if (result.type != ResultType.done &&
         result.type != ResultType.noAppToOpen) {

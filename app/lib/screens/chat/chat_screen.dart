@@ -19,6 +19,7 @@ import '../browser/scan_result_dialog.dart';
 import '../call/call_screen.dart';
 import '../profile/profile_screen.dart';
 import 'group_info_sheet.dart';
+import 'image_tile.dart';
 import '../../core/localizations.dart';
 
 const _kReactionEmojis = [
@@ -34,6 +35,9 @@ const _kReactionEmojis = [
   '👏',
   '🙏',
   '💯',
+  '😭',
+  '💀',
+  ':)',
 ];
 
 class ChatScreen extends StatefulWidget {
@@ -77,6 +81,10 @@ class _ChatScreenState extends State<ChatScreen> {
     // Use the captured controller: reading via an InheritedWidget here is not
     // allowed while the element is being unmounted (deactivated ancestor).
     controller.setActiveConversation(null);
+    final conversationId = conversation.id;
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => LockService.instance.revokeChatAccess(conversationId),
+    );
     _input.dispose();
     _guessInput.dispose();
     _scroll.dispose();
@@ -1918,6 +1926,10 @@ class _FileAttachmentTile extends StatelessWidget {
     final attachment = message.attachment;
     if (attachment == null) return const SizedBox.shrink();
     final scheme = Theme.of(context).colorScheme;
+
+    if (AttachmentHelper.isImage(attachment)) {
+      return ImageAttachmentTile(message: message);
+    }
 
     return InkWell(
       borderRadius: BorderRadius.circular(10),
