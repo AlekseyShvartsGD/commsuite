@@ -7,5 +7,7 @@ server/update/*.tar.gz
 
 # Built distributions, uploads, and generated/signed binaries.
 dist/
+installer/bin/
+installer/obj/
 __pycache__/
 *.pyc

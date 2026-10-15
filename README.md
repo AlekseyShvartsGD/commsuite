@@ -98,6 +98,35 @@ flutter analyze          # clean
 flutter test             # widget smoke test
 ```
 
+## Windows installer
+
+The Windows build ships as a single setup exe built from `installer/` (a .NET
+Framework 4.8 WPF app, so there is no runtime to install - 4.8 is part of
+Windows 10/11). It has a folder picker, a progress bar and a black
+80%-transparent window, and embeds both the app payload and a small uninstaller.
+
+```powershell
+# 1. Flutter Windows build into dist\app
+cd app
+flutter build windows
+Copy-Item build\windows\x64\runner\Release\* ..\dist\app -Recurse -Force
+
+# 2. build dist\CommsuiteSetup.exe (stages dist\app -> embedded zip)
+cd ..
+powershell -ExecutionPolicy Bypass -File installer\build.ps1
+```
+
+- GUI: choose the folder, watch progress, optionally launch on finish.
+- Silent (used by the app's in-place auto-update): `CommsuiteSetup.exe /S`
+  (optionally `/D=<folder>`).
+- Uninstall: the setup writes `Uninstall.exe` into the install folder; it
+  removes the files, shortcuts, the autostart entry and the registry entries
+  (relaunching itself from `%TEMP%` so the folder can be fully deleted).
+
+The version lives in `installer/CommsuiteInstaller.csproj` (`Version`,
+`FileVersion`) and must stay in sync with `app/pubspec.yaml`,
+`app/lib/core/app_version.dart` and `server/update/latest.json`.
+
 ## Getting started (two accounts)
 
 1. Start the server (`npm start`).

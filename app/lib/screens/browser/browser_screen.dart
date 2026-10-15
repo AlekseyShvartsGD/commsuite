@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/download_service.dart';
@@ -41,6 +43,13 @@ class _BrowserScreenState extends State<BrowserScreen> {
   // null = still probing WebView2 availability; false = missing (Windows).
   bool? _webviewOk;
 
+  // WebView2 environment for this session. Its user-data folder is forced into
+  // a per-user writable location: the plugin default is
+  // "<exe-dir>\<exe>.WebView2", which lives under Program Files after install
+  // and is not writable for a standard user - WebView2 then fails to persist
+  // its profile and renders every page black.
+  WebViewEnvironment? _webEnv;
+
   bool get _isWindows =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
@@ -50,26 +59,52 @@ class _BrowserScreenState extends State<BrowserScreen> {
     _tabs.add(_BrowserTab(_home));
     _urlController.text = _home;
     _loadBookmarks();
-    _probeWebView();
+    _initWebView();
     BrowserRequest.request.addListener(_onBrowserRequest);
     // Rebuild the list from disk so downloads from earlier sessions show up.
     DownloadService.instance.refresh();
   }
 
-  Future<void> _probeWebView() async {
-    final version = await webview2RuntimeVersion();
-    if (!mounted) return;
-    setState(() {
+  Future<void> _initWebView() async {
+    if (!_isWindows) {
       // WebView2 is only mandatory on Windows (Android uses the OS webview,
       // Linux has no embedded webview at all).
-      _webviewOk = !_isWindows || version.isNotEmpty;
-    });
+      if (mounted) setState(() => _webviewOk = true);
+      return;
+    }
+    final version = await webview2RuntimeVersion();
+    if (!mounted) return;
+    if (version.isEmpty) {
+      setState(() => _webviewOk = false);
+      return;
+    }
+    try {
+      final support = await getApplicationSupportDirectory();
+      final folder =
+          Directory('${support.path}${Platform.pathSeparator}webview2');
+      if (!folder.existsSync()) folder.createSync(recursive: true);
+      final env = await WebViewEnvironment.create(
+        settings: WebViewEnvironmentSettings(userDataFolder: folder.path),
+      );
+      if (!mounted) {
+        env.dispose();
+        return;
+      }
+      setState(() {
+        _webEnv = env;
+        _webviewOk = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _webviewOk = false);
+    }
   }
 
   @override
   void dispose() {
     BrowserRequest.request.removeListener(_onBrowserRequest);
     _urlController.dispose();
+    _webEnv?.dispose();
     super.dispose();
   }
 
@@ -496,7 +531,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
       return _WebViewUnavailable(
         url: tab.currentUrl,
         onOpen: () => _openExternal(tab.currentUrl),
-        onRetry: _probeWebView,
+        onRetry: _initWebView,
       );
     }
     if (_webviewOk == null) {
@@ -506,6 +541,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
     return _WebviewHost(
       key: ObjectKey(tab),
       tab: tab,
+      webViewEnvironment: _webEnv,
       onDownloadStart: _onDownloadStart,
       onChanged: () {
         if (!mounted) return;
@@ -588,6 +624,7 @@ class _ExternalBrowserView extends StatelessWidget {
 /// blank area or crashing the tab.
 class _WebviewHost extends StatefulWidget {
   final _BrowserTab tab;
+  final WebViewEnvironment? webViewEnvironment;
   final VoidCallback onChanged;
   final void Function(InAppWebViewController, DownloadStartRequest)
       onDownloadStart;
@@ -597,6 +634,7 @@ class _WebviewHost extends StatefulWidget {
     required this.tab,
     required this.onChanged,
     required this.onDownloadStart,
+    this.webViewEnvironment,
   });
 
   @override
@@ -649,6 +687,7 @@ class _WebviewHostState extends State<_WebviewHost> {
     }
     final tab = widget.tab;
     return InAppWebView(
+      webViewEnvironment: widget.webViewEnvironment,
       initialUrlRequest: URLRequest(url: WebUri(tab.currentUrl)),
       initialSettings: InAppWebViewSettings(
         javaScriptEnabled: true,

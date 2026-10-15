@@ -1,22 +1,22 @@
 {
-  "installer": "/update/commsuite-setup.exe",
-  "version": "1.0.37",
-  "apk": "/update/commsuite.apk",
-  "apkSize": 95642291,
-  "mirrors": {
-    "linux": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.37/commsuite-linux-1.0.37.tar.gz",
-    "installer": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.37/commsuite-setup.exe",
-    "apk": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.37/commsuite.apk"
-  },
-  "apkVersion": "1.0.37",
-  "publishedAt": 1791999182637,
-  "installerSize": 23112943,
-  "linux": "/update/commsuite-linux-1.0.37.tar.gz",
-  "installerSha256": "c70aa1bce7bae12d686d63b2484b35568e1d65d0b664734dba176080337dba5e",
-  "linuxSha256": "af1f0fc7a401a6586ae8db1eb692cc700b778a2d51d1cf6e34ce955705ea71ab",
-  "windowsVersion": "1.0.37",
-  "notes": "Image previews in chats; lock UX fixes (overlay, per-chat relock, focus/clear)",
-  "apkSha256": "998dd2e9e9eeaa1536b03a8c2b4d1d7de5c1cc7c3c8ae38220fc6253dcf6a9ce",
-  "linuxSize": 20920410,
-  "linuxVersion": "1.0.37"
+    "installer":  "/update/commsuite-setup.exe",
+    "version":  "1.0.38",
+    "apk":  "/update/commsuite.apk",
+    "apkSize":  95642291,
+    "mirrors":  {
+                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.37/commsuite-linux-1.0.37.tar.gz",
+                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.38/commsuite-setup.exe",
+                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.37/commsuite.apk"
+                },
+    "apkVersion":  "1.0.37",
+    "publishedAt":  1792090455032,
+    "installerSize":  23540224,
+    "linux":  "/update/commsuite-linux-1.0.37.tar.gz",
+    "installerSha256":  "3ff9b197d65bb9b9b3b9f9f57f64650c2942bb2ba52fad0563769be7b815e659",
+    "linuxSha256":  "af1f0fc7a401a6586ae8db1eb692cc700b778a2d51d1cf6e34ce955705ea71ab",
+    "windowsVersion":  "1.0.38",
+    "notes":  "New .NET installer (folder picker + progress); fix lock-overlay crash; server auto-discovery fallback",
+    "apkSha256":  "998dd2e9e9eeaa1536b03a8c2b4d1d7de5c1cc7c3c8ae38220fc6253dcf6a9ce",
+    "linuxSize":  20920410,
+    "linuxVersion":  "1.0.37"
 }

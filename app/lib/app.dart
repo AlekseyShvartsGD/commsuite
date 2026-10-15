@@ -11,6 +11,7 @@ import 'services/comms_controller.dart';
 import 'services/crash_reporter.dart';
 import 'services/lock_service.dart';
 import 'services/server_auto_starter.dart';
+import 'services/server_discovery.dart';
 import 'services/tray_service.dart';
 import 'services/update_service.dart';
 import 'screens/auth_screen.dart';
@@ -59,6 +60,9 @@ class _CommsAppState extends State<CommsApp> with WidgetsBindingObserver {
     // Windows: if the saved server is unreachable, boot it (WSL node + tunnels)
     // in the background. The "redirecting to your server" screen covers the wait.
     ServerAutoStarter.ensureRunning();
+    // If the saved server address no longer answers, learn the current public
+    // one from the published pointer (CloudPub subdomains are random).
+    ServerDiscovery.instance.start();
     // Windows: check the server's /update feed for a newer build.
     UpdateService.instance.start();
     controller = CommsController();
@@ -333,18 +337,25 @@ class _LockGate extends StatelessWidget {
       builder: (context, _) {
         final lock = LockService.instance;
         if (!lock.locked) return const SizedBox.shrink();
-        return Navigator(
-          onGenerateRoute: (_) => MaterialPageRoute<void>(
-            builder: (_) => PasscodeLock(
-              title: L.t('Commsuite is locked', ru: 'Commsuite заблокирован'),
-              subtitle: L.t(
-                'Enter your Enigma passcode to continue',
-                ru: 'Введите кодовую фразу Enigma',
+        // HeroControllerScope.none keeps this nested Navigator from adopting
+        // MaterialApp's HeroController. Sharing one controller between two
+        // navigators detaches it when this lock navigator leaves the tree
+        // (unlock), and the next push on the root navigator then crashes in
+        // HeroController.didChangeTop on a null navigator.
+        return HeroControllerScope.none(
+          child: Navigator(
+            onGenerateRoute: (_) => MaterialPageRoute<void>(
+              builder: (_) => PasscodeLock(
+                title: L.t('Commsuite is locked', ru: 'Commsuite заблокирован'),
+                subtitle: L.t(
+                  'Enter your Enigma passcode to continue',
+                  ru: 'Введите кодовую фразу Enigma',
+                ),
+                verify: (passcode) async => lock.verifyPasscode(passcode),
+                biometric:
+                    lock.biometricSupported ? lock.authenticateBiometric : null,
+                onUnlocked: lock.markUnlocked,
               ),
-              verify: (passcode) async => lock.verifyPasscode(passcode),
-              biometric:
-                  lock.biometricSupported ? lock.authenticateBiometric : null,
-              onUnlocked: lock.markUnlocked,
             ),
           ),
         );

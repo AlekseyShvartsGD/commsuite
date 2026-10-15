@@ -11,6 +11,7 @@ import '../models.dart';
 import '../screens/call/call_screen.dart';
 import 'notification_service.dart';
 import 'os_notifications.dart';
+import 'server_discovery.dart';
 import 'sound.dart';
 import 'tray_service.dart';
 import 'webrtc_service.dart';
@@ -245,8 +246,12 @@ class CommsController extends ChangeNotifier {
           notifyListeners();
           return;
         }
+        // The saved address may have gone stale (random CloudPub subdomain):
+        // try to learn the current one before the next retry.
+        ServerDiscovery.instance.start();
         _autoconnect(); // server unreachable yet: keep the token and retry
       } catch (_) {
+        ServerDiscovery.instance.start();
         _autoconnect();
       }
     });
