@@ -1,10 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../../app.dart';
+import '../../core/app_config.dart';
 import '../../core/navigation.dart';
 import '../../models.dart';
 import '../../services/comms_controller.dart';
+import '../../services/webrtc_service.dart';
 import '../../core/localizations.dart';
 
 class CallScreen extends StatefulWidget {
@@ -50,6 +54,128 @@ class _CallScreenState extends State<CallScreen> {
       _popped = true;
       Navigator.of(context).pop();
     }
+  }
+
+  Future<void> _showDeviceSheet(CommsController controller) async {
+    final cameras = await WebRTCService.listCameras();
+    final mics = await WebRTCService.listMicrophones();
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheet) {
+        final theme = Theme.of(sheet);
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              if (Platform.isAndroid)
+                ListTile(
+                  leading: const Icon(Icons.flip_camera_android),
+                  title: Text(L.t('Flip camera (front/back)',
+                      ru: 'Переключить камеру (спереди/сзади)')),
+                  onTap: () async {
+                    Navigator.of(sheet).pop();
+                    await controller.webrtc.switchCamera();
+                    setState(() {});
+                  },
+                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Text(L.t('Camera', ru: 'Камера'),
+                    style: theme.textTheme.titleSmall),
+              ),
+              ListTile(
+                leading: Icon(AppConfig.cameraId.isEmpty
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked),
+                title:
+                    Text(L.t('System default', ru: 'Системная по умолчанию')),
+                onTap: () => _pickCamera(sheet, controller, ''),
+              ),
+              for (var i = 0; i < cameras.length; i++)
+                ListTile(
+                  leading: Icon(cameras[i].deviceId == AppConfig.cameraId
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked),
+                  title: Text(
+                    cameras[i].label.trim().isEmpty
+                        ? '${L.t('Camera', ru: 'Камера')} ${i + 1}'
+                        : cameras[i].label,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: () =>
+                      _pickCamera(sheet, controller, cameras[i].deviceId),
+                ),
+              const Divider(height: 24),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                child: Text(L.t('Microphone', ru: 'Микрофон'),
+                    style: theme.textTheme.titleSmall),
+              ),
+              ListTile(
+                leading: Icon(AppConfig.micId.isEmpty
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked),
+                title:
+                    Text(L.t('System default', ru: 'Системный по умолчанию')),
+                onTap: () => _pickMic(sheet, controller, ''),
+              ),
+              for (var i = 0; i < mics.length; i++)
+                ListTile(
+                  leading: Icon(mics[i].deviceId == AppConfig.micId
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked),
+                  title: Text(
+                    mics[i].label.trim().isEmpty
+                        ? '${L.t('Microphone', ru: 'Микрофон')} ${i + 1}'
+                        : mics[i].label,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: () => _pickMic(sheet, controller, mics[i].deviceId),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _pickCamera(
+    BuildContext sheet,
+    CommsController controller,
+    String deviceId,
+  ) async {
+    Navigator.of(sheet).pop();
+    final ok = await controller.webrtc.useCamera(deviceId);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(L.t('Could not switch camera.',
+                ru: 'Не удалось переключить камеру.'))),
+      );
+    }
+    setState(() {});
+  }
+
+  Future<void> _pickMic(
+    BuildContext sheet,
+    CommsController controller,
+    String deviceId,
+  ) async {
+    Navigator.of(sheet).pop();
+    final ok = await controller.webrtc.useMicrophone(deviceId);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(L.t('Could not switch microphone.',
+                ru: 'Не удалось переключить микрофон.'))),
+      );
+    }
+    setState(() {});
   }
 
   Widget _buildBody(
@@ -212,13 +338,10 @@ class _CallScreenState extends State<CallScreen> {
                           },
                         ),
                         _RoundButton(
-                          icon: Icons.cameraswitch,
+                          icon: Icons.settings_input_component,
                           color: Colors.white24,
-                          label: L.t('Switch', ru: 'Сменить'),
-                          onTap: () async {
-                            await controller.webrtc.switchCamera();
-                            setState(() {});
-                          },
+                          label: L.t('Devices', ru: 'Устройства'),
+                          onTap: () => _showDeviceSheet(controller),
                         ),
                       ],
                     ],

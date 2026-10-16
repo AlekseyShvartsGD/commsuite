@@ -42,9 +42,21 @@ class WebRTCService {
       if (!mic.isGranted || (video && !cam.isGranted)) return false;
     }
     final constraints = <String, dynamic>{
-      'audio': {'echoCancellation': true, 'noiseSuppression': true, 'autoGainControl': true},
+      'audio': {
+        'echoCancellation': true,
+        'noiseSuppression': true,
+        'autoGainControl': true,
+        if (AppConfig.micId.isNotEmpty) 'deviceId': {'ideal': AppConfig.micId},
+      },
       'video': video
-          ? {'facingMode': 'user', 'width': 1280, 'height': 720}
+          ? {
+              'width': 1280,
+              'height': 720,
+              if (AppConfig.cameraId.isNotEmpty)
+                'deviceId': {'ideal': AppConfig.cameraId}
+              else
+                'facingMode': 'user',
+            }
           : false,
     };
     try {
@@ -191,6 +203,108 @@ class WebRTCService {
         await Helper.switchCamera(t);
       }
     }
+  }
+
+  /// Video input devices the OS exposes (e.g. an attached webcam, or the
+  /// GoPro Webcam virtual camera once its utility is running). Labels can be
+  /// empty until a capture permission has been granted at least once.
+  static Future<List<MediaDeviceInfo>> listCameras() => _listDevices('videoinput');
+
+  /// Audio input devices the OS exposes.
+  static Future<List<MediaDeviceInfo>> listMicrophones() => _listDevices('audioinput');
+
+  static Future<List<MediaDeviceInfo>> _listDevices(String kind) async {
+    try {
+      final devices = await navigator.mediaDevices.enumerateDevices();
+      return devices
+          .where((d) => d.kind == kind && d.deviceId.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const <MediaDeviceInfo>[];
+    }
+  }
+
+  /// Uses [deviceId] for the camera from now on. When a call is live the
+  /// current video track is hot-swapped so the remote peer sees the change
+  /// without a renegotiation. Empty [deviceId] means "system default".
+  Future<bool> useCamera(String deviceId) async {
+    final pc = _pc;
+    final stream = _localStream;
+    if (pc == null || stream == null || stream.getVideoTracks().isEmpty) {
+      await AppConfig.setCameraId(deviceId);
+      return true;
+    }
+    try {
+      final cam = await navigator.mediaDevices.getUserMedia({
+        'audio': false,
+        'video': deviceId.isEmpty
+            ? {'facingMode': 'user', 'width': 1280, 'height': 720}
+            : {'deviceId': {'exact': deviceId}, 'width': 1280, 'height': 720},
+      });
+      final newTrack = cam.getVideoTracks().first;
+      newTrack.enabled = _videoEnabled;
+      await _swapTrack(pc, stream, newTrack, 'video');
+      localRenderer.srcObject = null;
+      localRenderer.srcObject = stream;
+      await AppConfig.setCameraId(deviceId);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Uses [deviceId] for the microphone from now on, hot-swapping the live
+  /// audio track when a call is in progress. Empty [deviceId] means "default".
+  Future<bool> useMicrophone(String deviceId) async {
+    final pc = _pc;
+    final stream = _localStream;
+    if (pc == null || stream == null || stream.getAudioTracks().isEmpty) {
+      await AppConfig.setMicId(deviceId);
+      return true;
+    }
+    try {
+      final mic = await navigator.mediaDevices.getUserMedia({
+        'video': false,
+        'audio': {
+          'echoCancellation': true,
+          'noiseSuppression': true,
+          'autoGainControl': true,
+          if (deviceId.isNotEmpty) 'deviceId': {'exact': deviceId},
+        },
+      });
+      final newTrack = mic.getAudioTracks().first;
+      newTrack.enabled = _micEnabled;
+      await _swapTrack(pc, stream, newTrack, 'audio');
+      await AppConfig.setMicId(deviceId);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _swapTrack(
+    RTCPeerConnection pc,
+    MediaStream stream,
+    MediaStreamTrack track,
+    String kind,
+  ) async {
+    var replaced = false;
+    for (final sender in await pc.getSenders()) {
+      if (sender.track?.kind == kind) {
+        await sender.replaceTrack(track);
+        replaced = true;
+      }
+    }
+    if (!replaced) {
+      await pc.addTrack(track, stream);
+    }
+    final olds =
+        kind == 'video' ? stream.getVideoTracks() : stream.getAudioTracks();
+    for (final old in olds) {
+      await stream.removeTrack(old);
+      await old.stop();
+    }
+    await stream.addTrack(track);
   }
 
   Future<void> closePeer() async {

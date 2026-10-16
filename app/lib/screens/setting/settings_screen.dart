@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../../app.dart';
 import '../../core/app_config.dart';
@@ -6,6 +7,7 @@ import '../../core/app_version.dart';
 import '../../core/localizations.dart';
 import '../../services/autostart_service.dart';
 import '../../services/lock_service.dart';
+import '../../services/webrtc_service.dart';
 import '../../widgets/passcode_setup.dart';
 import '../../widgets/user_avatar.dart';
 import '../mod/mod_reports_screen.dart';
@@ -29,6 +31,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _vtProxyController = TextEditingController();
   bool _autostartEnabled = false;
   bool _autostartLoaded = false;
+  List<MediaDeviceInfo> _cameras = const [];
+  List<MediaDeviceInfo> _mics = const [];
+  String _cameraId = '';
+  String _micId = '';
+  bool _devicesLoading = false;
 
   @override
   void initState() {
@@ -57,6 +64,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
       });
     }
+    _cameraId = AppConfig.cameraId;
+    _micId = AppConfig.micId;
+    _loadDevices();
   }
 
   @override
@@ -94,6 +104,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ru: 'Сервер обновлён, переподключение…'))),
     );
   }
+
+  Future<void> _loadDevices() async {
+    setState(() => _devicesLoading = true);
+    final cameras = await WebRTCService.listCameras();
+    final mics = await WebRTCService.listMicrophones();
+    if (!mounted) return;
+    setState(() {
+      _cameras = cameras;
+      _mics = mics;
+      _devicesLoading = false;
+    });
+  }
+
+  String _deviceLabel(MediaDeviceInfo d, int index, String prefix) =>
+      d.label.trim().isEmpty ? '$prefix ${index + 1}' : d.label;
 
   Future<void> _saveTurn() async {
     final host = _turnHostController.text.trim();
@@ -330,6 +355,96 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: _saveServer,
             icon: const Icon(Icons.save_outlined),
             label: Text(L.t('Save & reconnect', ru: 'Сохранить и переподключиться')),
+          ),
+          const SizedBox(height: 24),
+          Text(L.t('Camera & microphone', ru: 'Камера и микрофон'),
+              style: theme.textTheme.titleSmall),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  L.t(
+                    'Pick exactly which camera and microphone calls use. On Windows, start the virtual-camera app (e.g. GoPro Webcam) first, then refresh.',
+                    ru: 'Выберите, какую камеру и микрофон использовать в звонках. В Windows сначала запустите приложение виртуальной камеры (например, GoPro Webcam), затем обновите список.',
+                  ),
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.outline),
+                ),
+              ),
+              IconButton(
+                tooltip: L.t('Refresh devices', ru: 'Обновить устройства'),
+                onPressed: _devicesLoading ? null : _loadDevices,
+                icon: _devicesLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          DropdownButtonFormField<String>(
+            key: ValueKey('camera-${_cameras.length}-$_cameraId'),
+            initialValue:
+                _cameras.any((c) => c.deviceId == _cameraId) ? _cameraId : '',
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: L.t('Camera', ru: 'Камера'),
+              prefixIcon: const Icon(Icons.videocam_outlined),
+              border: const OutlineInputBorder(),
+            ),
+            items: [
+              DropdownMenuItem(
+                value: '',
+                child: Text(L.t('System default', ru: 'Системная по умолчанию')),
+              ),
+              for (var i = 0; i < _cameras.length; i++)
+                DropdownMenuItem(
+                  value: _cameras[i].deviceId,
+                  child: Text(
+                    _deviceLabel(_cameras[i], i, L.t('Camera', ru: 'Камера')),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+            onChanged: (value) async {
+              if (value == null) return;
+              await AppConfig.setCameraId(value);
+              if (mounted) setState(() => _cameraId = value);
+            },
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            key: ValueKey('mic-${_mics.length}-$_micId'),
+            initialValue: _mics.any((m) => m.deviceId == _micId) ? _micId : '',
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: L.t('Microphone', ru: 'Микрофон'),
+              prefixIcon: const Icon(Icons.mic_none),
+              border: const OutlineInputBorder(),
+            ),
+            items: [
+              DropdownMenuItem(
+                value: '',
+                child: Text(L.t('System default', ru: 'Системный по умолчанию')),
+              ),
+              for (var i = 0; i < _mics.length; i++)
+                DropdownMenuItem(
+                  value: _mics[i].deviceId,
+                  child: Text(
+                    _deviceLabel(_mics[i], i, L.t('Microphone', ru: 'Микрофон')),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+            onChanged: (value) async {
+              if (value == null) return;
+              await AppConfig.setMicId(value);
+              if (mounted) setState(() => _micId = value);
+            },
           ),
           const SizedBox(height: 24),
           Text(L.t('Calls (TURN relay)', ru: 'Звонки (TURN-ретранслятор)'),

@@ -16,6 +16,8 @@ class AppConfig {
   static const _vtKeyKey = 'commsuite.vtkey';
   static const _vtProxyKey = 'commsuite.vtproxy';
   static const _langKey = 'commsuite.lang';
+  static const _cameraIdKey = 'commsuite.camera_id';
+  static const _micIdKey = 'commsuite.mic_id';
   static String _serverUrl = '';
   static String _turnHost = '';
   static int _turnPort = 0;
@@ -23,6 +25,8 @@ class AppConfig {
   static String _turnPass = '';
   static bool _rememberMe = true;
   static bool _loaded = false;
+  static String _cameraId = '';
+  static String _micId = '';
 
   static String get serverUrl => _serverUrl;
   static String get apiBase => '$_serverUrl/api';
@@ -33,6 +37,18 @@ class AppConfig {
   static int get turnPort => _turnPort;
   static String get turnUser => _turnUser;
   static String get turnPass => _turnPass;
+
+  /// Exactly which capture devices calls use. Empty means "system default".
+  static String get cameraId => _cameraId;
+  static String get micId => _micId;
+
+  /// Extra RTCConfiguration keys applied to every call. On Android the
+  /// CPU-overuse detector is disabled: its `FrameProcessingTimes` sampling
+  /// trips a libwebrtc `Check failed: time >= last_data_point.time` (SIGABRT on
+  /// the VideoEncoderQueue thread) when the software encoder is reconfigured
+  /// mid-stream, which is what kills the app on emulators/constrained devices.
+  static Map<String, dynamic> get _callTweaks =>
+      Platform.isAndroid ? const {'enableCpuOveruseDetection': false} : const {};
 
   /// RTCConfiguration for WebRTC calls.
   /// With a TURN relay configured, all ICE is forced through it; both UDP and
@@ -52,6 +68,7 @@ class AppConfig {
           },
         ],
         'iceTransportPolicy': 'relay',
+        ..._callTweaks,
       };
     }
     return {
@@ -59,6 +76,7 @@ class AppConfig {
         {'urls': 'stun:stun.l.google.com:19302'},
         {'urls': 'stun:stun1.l.google.com:19302'},
       ],
+      ..._callTweaks,
     };
   }
 
@@ -77,7 +95,11 @@ class AppConfig {
           final data = jsonDecode(resp.body) as Map<String, dynamic>;
           final servers = data['iceServers'];
           if (servers is List && servers.isNotEmpty) {
-            return {'iceServers': servers, 'iceTransportPolicy': 'relay'};
+            return {
+              'iceServers': servers,
+              'iceTransportPolicy': 'relay',
+              ..._callTweaks,
+            };
           }
         }
       }
@@ -114,6 +136,8 @@ class AppConfig {
     _turnUser = prefs.getString(_turnUserKey) ?? '';
     _turnPass = prefs.getString(_turnPassKey) ?? '';
     _rememberMe = prefs.getBool(_rememberKey) ?? true;
+    _cameraId = prefs.getString(_cameraIdKey) ?? '';
+    _micId = prefs.getString(_micIdKey) ?? '';
     _loaded = true;
   }
 
@@ -165,6 +189,26 @@ class AppConfig {
     await prefs.remove(_turnPortKey);
     await prefs.remove(_turnUserKey);
     await prefs.remove(_turnPassKey);
+  }
+
+  static Future<void> setCameraId(String id) async {
+    _cameraId = id.trim();
+    final prefs = await SharedPreferences.getInstance();
+    if (_cameraId.isEmpty) {
+      await prefs.remove(_cameraIdKey);
+    } else {
+      await prefs.setString(_cameraIdKey, _cameraId);
+    }
+  }
+
+  static Future<void> setMicId(String id) async {
+    _micId = id.trim();
+    final prefs = await SharedPreferences.getInstance();
+    if (_micId.isEmpty) {
+      await prefs.remove(_micIdKey);
+    } else {
+      await prefs.setString(_micIdKey, _micId);
+    }
   }
 
   static Future<void> saveToken(String token) async {
