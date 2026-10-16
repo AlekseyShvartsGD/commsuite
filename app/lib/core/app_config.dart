@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AppConfig {
@@ -33,14 +35,18 @@ class AppConfig {
   static String get turnPass => _turnPass;
 
   /// RTCConfiguration for WebRTC calls.
-  /// With a TURN relay configured, all ICE is forced through it (TCP-only
-  /// networks where direct UDP paths do not exist); otherwise plain STUN.
+  /// With a TURN relay configured, all ICE is forced through it; both UDP and
+  /// TCP relay transport URLs are offered so a call still connects on networks
+  /// that filter UDP (e.g. an Android emulator). Otherwise plain STUN.
   static Map<String, dynamic> callIceConfig() {
     if (turnEnabled) {
       return {
         'iceServers': [
           {
-            'urls': ['turn:$_turnHost:$_turnPort?transport=tcp'],
+            'urls': [
+              'turn:$_turnHost:$_turnPort?transport=udp',
+              'turn:$_turnHost:$_turnPort?transport=tcp',
+            ],
             'username': _turnUser,
             'credential': _turnPass,
           },
@@ -54,6 +60,31 @@ class AppConfig {
         {'urls': 'stun:stun1.l.google.com:19302'},
       ],
     };
+  }
+
+  /// RTCConfiguration for calls. Prefers short-lived TURN credentials issued by
+  /// the server (GET /api/turn, Cloudflare Realtime TURN) so calls connect even
+  /// behind carrier-grade NAT; falls back to the manually configured TURN, then
+  /// plain STUN.
+  static Future<Map<String, dynamic>> fetchIceConfig() async {
+    try {
+      final token = await loadToken();
+      if (_serverUrl.isNotEmpty && token != null && token.isNotEmpty) {
+        final resp = await http
+            .get(Uri.parse('$apiBase/turn'), headers: {'Authorization': 'Bearer $token'})
+            .timeout(const Duration(seconds: 8));
+        if (resp.statusCode == 200) {
+          final data = jsonDecode(resp.body) as Map<String, dynamic>;
+          final servers = data['iceServers'];
+          if (servers is List && servers.isNotEmpty) {
+            return {'iceServers': servers, 'iceTransportPolicy': 'relay'};
+          }
+        }
+      }
+    } catch (_) {
+      // Server unreachable or TURN not configured: use the local fallback.
+    }
+    return callIceConfig();
   }
 
   static String get wsUrl => wsUrlWithToken(null);

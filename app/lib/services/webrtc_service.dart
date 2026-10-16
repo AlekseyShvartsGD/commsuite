@@ -69,7 +69,8 @@ class WebRTCService {
     await closePeer();
     _remoteSet = false;
     _pendingIce.clear();
-    final pc = await createPeerConnection(AppConfig.callIceConfig());
+    final iceConfig = await AppConfig.fetchIceConfig();
+    final pc = await createPeerConnection(iceConfig);
     _pc = pc;
 
     pc.onIceCandidate = (candidate) {
@@ -102,7 +103,18 @@ class WebRTCService {
       }
     };
 
-    _localStream?.getTracks().forEach(pc.addTrack);
+    // Always pass the local stream to addTrack: flutter_webrtc builds the
+    // native `streamIds` argument as [stream?.id], so calling addTrack(track)
+    // with no stream sends a list containing null. On Android that null hits
+    // JniHelper.getStringBytes(null) -> NullPointerException inside the JNI
+    // callback, which cannot be thrown across the boundary and aborts the
+    // process (nativeAddTrack -> jvm.cc "Check failed: false" -> SIGABRT).
+    final stream = _localStream;
+    if (stream != null) {
+      for (final track in stream.getTracks()) {
+        await pc.addTrack(track, stream);
+      }
+    }
   }
 
   Future<RTCSessionDescription?> createOffer() async {

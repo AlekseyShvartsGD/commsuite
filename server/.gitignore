@@ -1,2 +1,4 @@
 node_modules/
 data/
+turn/cloudflare.json
+turn/windows-turn/turnserver.exe

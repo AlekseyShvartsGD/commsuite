@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import authRouter, { authMiddleware } from './auth.js';
 import chatRouter from './chat.js';
+import turnRouter from './turn.js';
 import { attachRealtime, onlineUserIds } from './realtime.js';
 import { publicUser, sweepOrphanAttachments } from './db.js';
 import db from './db.js';
@@ -32,6 +33,7 @@ app.get('/health', (req, res) => {
 
 app.use('/api', authRouter);
 app.use('/api', authMiddleware, chatRouter);
+app.use('/api', authMiddleware, turnRouter);
 
 app.use((err, req, res, next) => {
   console.error(err);
