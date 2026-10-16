@@ -9,10 +9,10 @@
                     "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.37/commsuite.apk"
                 },
     "apkVersion":  "1.0.37",
-    "publishedAt":  1792090455032,
-    "installerSize":  23540224,
+    "publishedAt":  1792159133300,
+    "installerSize":  23541248,
     "linux":  "/update/commsuite-linux-1.0.37.tar.gz",
-    "installerSha256":  "3ff9b197d65bb9b9b3b9f9f57f64650c2942bb2ba52fad0563769be7b815e659",
+    "installerSha256":  "4d9319e83e1aa80ed63f32414613e0ed0c9f133f48a3027e8439b3c896f6ed49",
     "linuxSha256":  "af1f0fc7a401a6586ae8db1eb692cc700b778a2d51d1cf6e34ce955705ea71ab",
     "windowsVersion":  "1.0.38",
     "notes":  "New .NET installer (folder picker + progress); fix lock-overlay crash; server auto-discovery fallback",

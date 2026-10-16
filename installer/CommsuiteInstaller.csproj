@@ -15,6 +15,9 @@
     <AssemblyName Condition="'$(Role)' == 'Setup'">CommsuiteSetup</AssemblyName>
     <AssemblyName Condition="'$(Role)' == 'Uninstall'">CommsuiteUninstall</AssemblyName>
     <RootNamespace>CommsuiteInstaller</RootNamespace>
+    <!-- Role=Uninstall defines UNINSTALLER so the standalone Uninstall.exe runs
+         the uninstall flow by default (double-clicking passes no /uninstall). -->
+    <DefineConstants Condition="'$(Role)' == 'Uninstall'">$(DefineConstants);UNINSTALLER</DefineConstants>
     <!-- -p:NoElevate=true swaps in an asInvoker manifest so the install
          logic can be smoke-tested without a UAC prompt. -->
     <ApplicationManifest Condition="'$(NoElevate)' != 'true'">app.manifest</ApplicationManifest>

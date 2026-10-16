@@ -135,7 +135,7 @@ class _CommsAppState extends State<CommsApp> with WidgetsBindingObserver {
             themeMode: ThemeMode.system,
             home: const _Root(),
             builder: (context, child) =>
-                Stack(children: [?child, const _ErrorBanner(), const _LockGate()]),
+                Stack(children: [?child, const _CrashReportListener(), const _LockGate()]),
           );
         },
       ),
@@ -143,18 +143,19 @@ class _CommsAppState extends State<CommsApp> with WidgetsBindingObserver {
   }
 }
 
-/// Shows the most recent unhandled error (if any) inside the app so a crash
-/// that would otherwise kill the process "silently" leaves a readable trace.
-class _ErrorBanner extends StatefulWidget {
-  const _ErrorBanner();
+/// Watches the error bus and surfaces the most recent unhandled error in the
+/// full crash-report window (the same dialog used after a recovered crash at
+/// startup) instead of a small truncated red banner.
+class _CrashReportListener extends StatefulWidget {
+  const _CrashReportListener();
 
   @override
-  State<_ErrorBanner> createState() => _ErrorBannerState();
+  State<_CrashReportListener> createState() => _CrashReportListenerState();
 }
 
-class _ErrorBannerState extends State<_ErrorBanner> {
-  String? _latest;
-  Timer? _dismissTimer;
+class _CrashReportListenerState extends State<_CrashReportListener> {
+  String? _shown;
+  bool _open = false;
 
   @override
   void initState() {
@@ -165,74 +166,37 @@ class _ErrorBannerState extends State<_ErrorBanner> {
   @override
   void dispose() {
     errorBus.removeListener(_onError);
-    _dismissTimer?.cancel();
     super.dispose();
   }
 
   void _onError() {
     final next = errorBus.value.isEmpty ? null : errorBus.value.first;
-    if (next == null || next == _latest) return;
-    _scheduleShow(next);
-    _dismissTimer?.cancel();
-    _dismissTimer = Timer(const Duration(seconds: 10), () {
-      if (mounted) setState(() => _latest = null);
-    });
+    if (next == null || next == _shown) return;
+    // The bus may be updated during build/layout/paint (e.g. by the crash
+    // handler). Pushing a route there throws "Build scheduled during frame",
+    // so the dialog is opened from a post-frame callback.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _show(next));
   }
 
-  /// The bus may be updated during build/layout/paint (e.g. by the crash
-  /// handler). Calling setState there throws "Build scheduled during frame",
-  /// so the show is deferred to a post-frame callback.
-  void _scheduleShow(String next) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !errorBus.value.contains(next)) return;
-      setState(() => _latest = next);
-    });
+  Future<void> _show(String report) async {
+    if (!mounted || _open) return;
+    final ctx = navigatorKey.currentContext;
+    if (ctx == null) return;
+    _shown = report;
+    _open = true;
+    try {
+      await showDialog<void>(
+        context: ctx,
+        builder: (_) => _CrashReportDialog(report: report),
+      );
+    } catch (_) {
+    } finally {
+      _open = false;
+    }
   }
 
   @override
-  Widget build(BuildContext context) {
-    final latest = _latest;
-    if (latest == null) return const SizedBox.shrink();
-    return SafeArea(
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Material(
-            color: const Color(0xFFB71C1C),
-            elevation: 4,
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.warning_amber, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      latest,
-                      style: const TextStyle(color: Colors.white),
-                      maxLines: 4,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white),
-                    onPressed: () {
-                      _dismissTimer?.cancel();
-                      if (mounted) setState(() => _latest = null);
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
 class _CrashReportDialog extends StatelessWidget {

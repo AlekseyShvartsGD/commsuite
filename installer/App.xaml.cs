@@ -21,7 +21,14 @@ namespace CommsuiteInstaller
             //   /D=<folder>     install folder (NSIS-style, silent installs)
             //   /uninstall      run the uninstaller that was copied to the
             //                   install folder
+#if UNINSTALLER
+            // This build IS the uninstaller (shipped as Uninstall.exe): it
+            // always uninstalls. Double-clicking passes no /uninstall flag, so
+            // without this it would wrongly open the setup wizard.
+            bool uninstall = true;
+#else
             bool uninstall = HasFlag(args, "/uninstall") || HasFlag(args, "--uninstall");
+#endif
             bool silent = HasFlag(args, "/S") || HasFlag(args, "/silent")
                           || HasFlag(args, "--silent");
             string dirArg = ParseDirArg(args);

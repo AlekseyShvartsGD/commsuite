@@ -20,7 +20,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="6"
+                            CornerRadius="0"
                             Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
@@ -71,7 +71,7 @@
                     <Border Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="6">
+                            CornerRadius="0">
                         <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
                                       VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                     </Border>
@@ -108,10 +108,26 @@
 
     <Style x:Key="DarkProgress" TargetType="ProgressBar">
         <Setter Property="Background" Value="#33FFFFFF" />
-        <Setter Property="Foreground" Value="#FF2F6FED" />
+        <Setter Property="Foreground" Value="#FF22C55E" />
         <Setter Property="BorderBrush" Value="#66FFFFFF" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Height" Value="10" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ProgressBar">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}">
+                        <Grid>
+                            <Rectangle x:Name="PART_Track" />
+                            <Rectangle x:Name="PART_Indicator"
+                                       HorizontalAlignment="Left"
+                                       Fill="{TemplateBinding Foreground}" />
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
 </ResourceDictionary>
