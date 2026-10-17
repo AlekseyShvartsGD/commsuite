@@ -27,8 +27,8 @@
     <!-- Keep the exe's ProductVersion clean ("1.0.37"), not "1.0.37+<git sha>". -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Version>1.0.39</Version>
-    <AssemblyVersion>1.0.38.0</AssemblyVersion>
-    <FileVersion>1.0.38.0</FileVersion>
+    <AssemblyVersion>1.0.39.0</AssemblyVersion>
+    <FileVersion>1.0.39.0</FileVersion>
     <Product>Commsuite</Product>
     <Company>Commsuite</Company>
     <Copyright>Commsuite</Copyright>
