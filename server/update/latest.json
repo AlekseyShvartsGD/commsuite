@@ -6,7 +6,7 @@
     "apkVersion": "1.0.39",
     "publishedAt": 1792224279586,
     "installerSize": 23541248,
-    "installerSha256": "10153b2815e571b14b5faa706761576bcbca32572a001ce832166e5e81f2fdd6",
+    "installerSha256": "2c9ba3366a2e833d71967cb5c7a7bee9217284be183ee4227631f35a0f3ca1eb",
     "mirrors": {
         "installer": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.39/commsuite-setup.exe"
     },
