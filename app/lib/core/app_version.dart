@@ -2,4 +2,4 @@
 ///  - pubspec.yaml `version:`
 ///  - installer/CommsuiteInstaller.csproj `Version` / `FileVersion`
 ///  - server/update/latest.json `version`
-const String appVersion = '1.0.38';
+const String appVersion = '1.0.39';
