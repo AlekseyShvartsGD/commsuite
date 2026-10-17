@@ -1,17 +1,17 @@
 {
-    "installer":  "/update/commsuite-setup.exe",
-    "version":  "1.0.39",
-    "apk":  "/update/commsuite.apk",
-    "apkSize":  96199531,
-    "apkVersion":  "1.0.39",
-    "publishedAt":  1792223374887,
-    "installerSize":  23541248,
-    "installerSha256":  "4d9319e83e1aa80ed63f32414613e0ed0c9f133f48a3027e8439b3c896f6ed49",
-    "mirrors":  {
-                    "installer":  "C:\\Users\\aleks\\Desktop\\alekz\\dist\\CommsuiteSetup.exe/commsuite-setup.exe"
-                },
-    "windowsVersion":  "1.0.39",
-    "notes":  "Device picker + Android encoder crash fix (disable CPU overuse detection); fix typing crash",
-    "apkSha256":  "3177a6317f93419c3dbbd820f546c84e189ad0c3e65ba4c30ad9a9199b2662b7",
-    "linuxVersion":  "1.0.39"
+    "installer": "/update/commsuite-setup.exe",
+    "version": "1.0.39",
+    "apk": "/update/commsuite.apk",
+    "apkSize": 96199531,
+    "apkVersion": "1.0.39",
+    "publishedAt": 1792223374887,
+    "installerSize": 23541248,
+    "installerSha256": "4d9319e83e1aa80ed63f32414613e0ed0c9f133f48a3027e8439b3c896f6ed49",
+    "mirrors": {
+        "installer": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.39/CommsuiteSetup.exe"
+    },
+    "windowsVersion": "1.0.39",
+    "notes": "Device picker + Android encoder crash fix (disable CPU overuse detection); fix typing crash",
+    "apkSha256": "3177a6317f93419c3dbbd820f546c84e189ad0c3e65ba4c30ad9a9199b2662b7",
+    "linuxVersion": "1.0.39"
 }
