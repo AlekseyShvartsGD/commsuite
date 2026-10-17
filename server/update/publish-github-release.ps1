@@ -6,7 +6,7 @@ param(
   [string]$Apk = "",
   [string]$Linux = "",
   [string]$Token = "",                 # falls back to $env:COMMSUITE_GH_TOKEN
-  [switch]$SkipSha256                  # do not attach the SHA256SUMS asset
+  [switch]$IncludeSha256            # also attach a SHA256SUMS asset (redundant: GitHub records digests itself)
 )
 # Publishes the release artifacts to GitHub Releases and prints the URLs to feed
 # publish-manifest.ps1 as *Mirror parameters, so clients download from a host
@@ -101,13 +101,14 @@ if ($Apk -and (Test-Path -LiteralPath $Apk)) { $assets += (Get-Item -LiteralPath
 if ($Linux -and (Test-Path -LiteralPath $Linux)) { $assets += (Get-Item -LiteralPath $Linux) }
 if ($assets.Count -eq 0) { throw "No artifacts found to publish (checked installer '$Installer', apk '$Apk', linux '$Linux')" }
 
-# SHA256SUMS so the release is verifiable by hand (opt-out via -SkipSha256).
-$lines = foreach ($a in $assets) {
-  "$((Get-FileHash -LiteralPath $a.FullName -Algorithm SHA256).Hash.ToLower())  $($a.Name)"
-}
-if ($SkipSha256) {
-  Write-Output "skipping SHA256SUMS asset (-SkipSha256)"
-} else {
+# GitHub now records a sha256 digest for every asset on its own (visible in the
+# release API `digest` field and on the download page), so a hand-rolled
+# SHA256SUMS asset is redundant. Only attach one if explicitly requested via
+# -IncludeSha256.
+if ($IncludeSha256) {
+  $lines = foreach ($a in $assets) {
+    "$((Get-FileHash -LiteralPath $a.FullName -Algorithm SHA256).Hash.ToLower())  $($a.Name)"
+  }
   $sums = Join-Path $env:TEMP "commsuite-sha256sums-$Version.txt"
   Set-Content -LiteralPath $sums -Value $lines -Encoding ascii
   $assets += (Get-Item -LiteralPath $sums)

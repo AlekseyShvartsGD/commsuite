@@ -145,10 +145,33 @@ class UpdateService {
   /// check (with a few retries while the local server boots) then every 60 s.
   void start() {
     if (!supported) return;
+    unawaited(_cleanStaleDownloads());
     _schedule(const Duration(seconds: 3));
     // Active repeating timers are held by the isolate's timer queue, so the
     // periodic handle can be dropped after creation.
     Timer.periodic(const Duration(minutes: 1), (_) => _tick());
+  }
+
+  /// Sweeps update artifacts left in the temp dir by earlier runs. The
+  /// downloader names them `commsuite-update-<version>.<ext>`, and every
+  /// release adds a new one, so without this they pile up forever. Best-effort:
+  /// a file still held by a just-finished installer is skipped this launch and
+  /// removed on the next one.
+  Future<void> _cleanStaleDownloads() async {
+    try {
+      final dir = await getTemporaryDirectory();
+      if (!dir.existsSync()) return;
+      await for (final entity in dir.list(followLinks: false)) {
+        if (entity is! File) continue;
+        final name = entity.uri.pathSegments.isEmpty
+            ? ''
+            : entity.uri.pathSegments.last;
+        if (!name.startsWith('commsuite-update-')) continue;
+        try {
+          await entity.delete();
+        } catch (_) {}
+      }
+    } catch (_) {}
   }
 
   void _schedule(Duration delay) {
