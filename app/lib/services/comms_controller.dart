@@ -619,7 +619,7 @@ class CommsController extends ChangeNotifier {
     _typing.putIfAbsent(convId, () => <String>{}).add(userId);
     _typingTimers[convId]?.cancel();
     _typingTimers[convId] = Timer(const Duration(seconds: 3), () {
-      _typing[convId]!.remove(userId);
+      _typing[convId]?.remove(userId);
       notifyListeners();
     });
     notifyListeners();
