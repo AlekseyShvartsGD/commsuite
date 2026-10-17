@@ -1,5 +1,5 @@
 {
-    "installer": "/update/commsuite-setup.exe",
+    "installer": "commsuite-setup.exe",
     "version": "1.0.39",
     "apk": "/update/commsuite.apk",
     "apkSize": 96199531,
