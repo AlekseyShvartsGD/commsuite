@@ -1,18 +1,17 @@
 {
-    "installer": "commsuite-setup.exe",
+    "installer": "/update/commsuite-setup.exe",
     "version": "1.0.39",
     "apk": "/update/commsuite.apk",
     "apkSize": 96199531,
     "apkVersion": "1.0.39",
-    "publishedAt": 1792224991516,
+    "publishedAt": 1792228081566,
     "installerSize": 23583232,
     "installerSha256": "596ff0db63fa4cd2ac1b12a3029b4bd41f6c1ac49e33f165824783456cfc3cb3",
     "mirrors": {
-        "installer": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.39/commsuite-setup.exe",
-        "apk": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.39/commsuite.apk"
+        "installer": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.39/commsuite-setup.exe"
     },
     "windowsVersion": "1.0.39",
-    "notes": "Device picker + Android encoder crash fix (disable CPU overuse detection); fix typing crash",
+    "notes": "Device picker + Android encoder crash fix (disable CPU overuse detection); fix typing crash; clean temp update installers",
     "apkSha256": "3177a6317f93419c3dbbd820f546c84e189ad0c3e65ba4c30ad9a9199b2662b7",
     "linuxVersion": "1.0.39"
 }
