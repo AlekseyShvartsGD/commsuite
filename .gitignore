@@ -11,3 +11,4 @@ installer/bin/
 installer/obj/
 __pycache__/
 *.pyc
+test
