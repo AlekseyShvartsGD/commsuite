@@ -5,14 +5,18 @@
   "apkSize": 96249235,
   "apkVersion": "1.0.40",
   "publishedAt": 1792245267240,
+  "linux": "/update/commsuite-1.0.40-linux.tar.gz",
+  "linuxSha256": "b91c94344b3670049060225652bb3f5441782d76d08f68a6fc2a53f46ab8b155"
   "installerSize": 23608832,
   "installerSha256": "7c727afc41f1994065b0f9b3c4e87f856e2304145741af9c767e9a5e96bce3e5",
   "mirrors": {
+    "linux": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.40/commsuite-1.0.40-linux.tar.gz"
     "apk": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.40/commsuite.apk"
     "installer": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.40/CommsuiteSetup.exe"
   },
   "windowsVersion": "1.0.40",
   "notes": "Verified badges, mod tools, support panel and developer tools; not functionable yet",
-  "apkSha256": "0fce63bff959ba958c3a0b563884778a5e5c318f1821e11ec9ff4b707ea40936",
-  "linuxVersion": "1.0.39"
+  "apkSha256": "874c16ee31b73f9ed67ca4283d84da2b113bc86d71149d8eff7c4057491232d6",
+  "linuxVersion": "1.0.40"
+  "linuxSize": 54722560,
 }
