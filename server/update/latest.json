@@ -8,6 +8,7 @@
   "installerSize": 23608832,
   "installerSha256": "7c727afc41f1994065b0f9b3c4e87f856e2304145741af9c767e9a5e96bce3e5",
   "mirrors": {
+    "apk": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.40/commsuite.apk"
     "installer": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.40/CommsuiteSetup.exe"
   },
   "windowsVersion": "1.0.40",
