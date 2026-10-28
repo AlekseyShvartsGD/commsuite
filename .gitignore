@@ -13,6 +13,8 @@ installer/.vs/
 __pycache__/
 *.pyc
 *.bak
+*.egg-info/
+server/bot_api/build/
 
 # Local payload/effect tooling; never published with Commsuite.
 gdi_maker/

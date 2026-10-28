@@ -46,6 +46,10 @@ A bot can also call the regular user API (`/api/conversations`,
 
 ## Python
 
+```bash
+pip install commsuite-bot
+```
+
 ```python
 from commsuite_bot import CommsuiteBot
 
@@ -58,9 +62,13 @@ def handle(update):
 bot.run(handle)
 ```
 
-See `commsuite_bot.py` for the small standard-library client and
-`example_echo_bot.py` for a complete echo bot. Only Python 3.8+ is required;
-there are no external dependencies.
+The package is a single standard-library module, so it also works by copying
+`commsuite_bot.py` next to your script. See `example_echo_bot.py` for a complete
+echo bot. Only Python 3.8+ is required; there are no external dependencies.
+
+Publishing a new version (maintainers): `python -m build` then
+`twine upload dist/*` from this folder, with `TWINE_USERNAME=__token__` and
+`TWINE_PASSWORD` set to a PyPI API token.
 
 ## Built-in replies and mini-apps
 

@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "commsuite-bot"
+version = "1.0.40"
+description = "Standard-library Python client for the Commsuite Bot API"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [{ name = "Aleksey Shvarts" }]
+keywords = ["commsuite", "bot", "chat", "api", "messenger"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+  "Topic :: Communications :: Chat",
+]
+
+[project.urls]
+Homepage = "https://github.com/AlekseyShvartsGD/commsuite"
+Source = "https://github.com/AlekseyShvartsGD/commsuite/tree/main/server/bot_api"
+Releases = "https://github.com/AlekseyShvartsGD/commsuite/releases"
+
+# Ship the single stdlib module; example_echo_bot.py stays in the repo only.
+[tool.setuptools]
+py-modules = ["commsuite_bot"]
