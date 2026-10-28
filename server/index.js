@@ -5,9 +5,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import authRouter, { authMiddleware } from './auth.js';
 import chatRouter from './chat.js';
+import crashRouter from './crash.js';
+import botRouter from './bot_api.js';
 import turnRouter from './turn.js';
 import { attachRealtime, onlineUserIds } from './realtime.js';
 import { publicUser, sweepOrphanAttachments } from './db.js';
+import { reportingConfigured, reportingRepo } from './github.js';
 import db from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -32,6 +35,8 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api', authRouter);
+app.use('/api', crashRouter);
+app.use('/api/bot', authMiddleware, botRouter);
 app.use('/api', authMiddleware, chatRouter);
 app.use('/api', authMiddleware, turnRouter);
 
@@ -47,6 +52,11 @@ server.listen(PORT, '0.0.0.0', () => {
   const users = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
   console.log(`Commsuite server on http://0.0.0.0:${PORT}  (users: ${users})`);
   console.log(`WebSocket endpoint: ws://0.0.0.0:${PORT}/ws?token=<jwt>`);
+  console.log(
+    reportingConfigured()
+      ? `Reports: mirroring to GitHub issues in ${reportingRepo()}`
+      : 'Reports: stored locally only (set COMMSUITE_GH_REPORTER_TOKEN to file GitHub issues)'
+  );
 
   const swept = sweepOrphanAttachments();
   if (swept > 0) console.log(`Attachments: swept ${swept} orphaned file(s)`);

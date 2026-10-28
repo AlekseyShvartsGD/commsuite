@@ -12,6 +12,9 @@ import '../../widgets/passcode_setup.dart';
 import '../../widgets/user_avatar.dart';
 import '../mod/mod_reports_screen.dart';
 import '../mod/mod_banned_screen.dart';
+import '../mod/mod_verified_screen.dart';
+import '../support/support_screen.dart';
+import '../dev/developer_tools_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -241,6 +244,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     UserAvatar(
                       name: user.displayName,
                       seed: user.username,
+                      isVerified: user.isVerified,
                       radius: 28,
                     ),
                     const SizedBox(width: 16),
@@ -336,8 +340,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
               ),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.verified_outlined),
+                  title: Text(
+                    L.t('Verified badges', ru: 'Значки подтверждения'),
+                  ),
+                  subtitle: Text(
+                    L.t('Grant or revoke verified badges',
+                        ru: 'Выдавать и снимать значки подтверждения'),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => const ModVerifiedScreen()),
+                  ),
+                ),
+              ),
             ],
           ],
+          const SizedBox(height: 24),
+          Text(L.t('Support & Tools', ru: 'Поддержка и инструменты'), style: theme.textTheme.titleSmall),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.support_agent_outlined),
+              title: Text(L.t('Support', ru: 'Поддержка')),
+              subtitle: Text(L.t('Contact Commsuite support', ru: 'Связаться с поддержкой Commsuite')),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SupportScreen()),
+              ),
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.developer_mode_outlined),
+              title: Text(L.t('Developer tools', ru: 'Инструменты разработчика')),
+              subtitle: Text(L.t('Chatbots and mini-apps', ru: 'Чат-боты и мини-приложения')),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const DeveloperToolsScreen()),
+              ),
+            ),
+          ),
           const SizedBox(height: 24),
           Text(L.t('Server', ru: 'Сервер'), style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),

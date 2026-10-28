@@ -13,11 +13,13 @@ import db, {
   publicConversation,
   publicUser,
   publicMessage,
+  queueBotUpdates,
   attachmentRowToPublic,
   attachmentIdsForConversation,
   deleteAttachmentsIfUnreferenced,
 } from './db.js';
 import { notifyUser } from './realtime.js';
+import { fileReportIssue, reportingConfigured } from './github.js';
 
 const router = Router();
 
@@ -70,6 +72,365 @@ function getMessageFor(req, res) {
   }
   return { me, msg, conversation };
 }
+
+// --- Chat bots ------------------------------------------------------------
+// A bot is a real user (role = 'bot') with an entry in `bots`. The owner can
+// add keyword replies and attach one mini-app; the server answers messages in
+// any conversation the bot participates in.
+
+const MINI_APPS = new Set(['none', 'json', 'base64', 'uuid']);
+const BOT_MODES = new Set(['builtin', 'api']);
+
+function botRowFor(id) {
+  return db.prepare('SELECT * FROM bots WHERE user_id = ?').get(String(id || ''));
+}
+
+function botRepliesFor(botId) {
+  return db
+    .prepare('SELECT * FROM bot_replies WHERE bot_id = ? ORDER BY created_at ASC')
+    .all(botId)
+    .map((r) => ({ id: r.id, trigger: r.trigger, reply: r.reply }));
+}
+
+function botToPublic(row) {
+  const user = loadUser(row.user_id);
+  return {
+    user: publicUser(user),
+    description: row.description,
+    miniApp: row.mini_app,
+    mode: row.mode,
+    enabled: !!row.enabled,
+    token: row.token,
+    replies: botRepliesFor(row.user_id),
+    createdAt: row.created_at,
+  };
+}
+
+function ownedBot(req, res, id) {
+  const row = botRowFor(id);
+  if (!row || row.owner_id !== req.user.sub) {
+    res.status(404).json({ error: 'bot not found' });
+    return null;
+  }
+  return row;
+}
+
+function botUsername(name) {
+  const base =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9_.-]+/g, '_')
+      .replace(/^[_.-]+|[_.-]+$/g, '')
+      .slice(0, 24) || 'bot';
+  const first = `${base.length < 3 ? 'bot' : base}_bot`.slice(0, 32);
+  if (!db.prepare('SELECT 1 FROM users WHERE username = ?').get(first)) return first;
+  let username;
+  do {
+    username = `${base.slice(0, 24)}_${crypto.randomBytes(3).toString('hex')}`.slice(0, 32);
+  } while (db.prepare('SELECT 1 FROM users WHERE username = ?').get(username));
+  return username;
+}
+
+function newBotToken() {
+  return `cmsb_${crypto.randomBytes(24).toString('hex')}`;
+}
+
+function miniAppHint(miniApp) {
+  switch (miniApp) {
+    case 'json':
+      return 'Send JSON and I will format it, e.g. {"hello":"world"}';
+    case 'base64':
+      return 'Use /b64 <text> to encode or /unb64 <text> to decode.';
+    case 'uuid':
+      return 'Send /uuid or /uuid 5 to generate random UUIDs.';
+    default:
+      return null;
+  }
+}
+
+function miniAppReply(miniApp, text) {
+  const trimmed = text.trim();
+
+  if (miniApp === 'json') {
+    const hasCommand = /^\/?json\s+/i.test(trimmed);
+    const source = hasCommand
+      ? trimmed.replace(/^\/?json\s+/i, '').trim()
+      : trimmed;
+    if (!hasCommand && !/^[[{]/.test(source)) return null;
+    try {
+      return JSON.stringify(JSON.parse(source), null, 2).slice(0, 8000);
+    } catch (e) {
+      return `Invalid JSON: ${e.message}`;
+    }
+  }
+
+  if (miniApp === 'base64') {
+    let match = trimmed.match(/^\/(?:b64|base64)\s+([\s\S]+)$/i);
+    if (match) {
+      return Buffer.from(match[1], 'utf8').toString('base64').slice(0, 8000);
+    }
+    match = trimmed.match(/^\/(?:unb64|base64decode)\s+([\s\S]+)$/i);
+    if (match) {
+      try {
+        return Buffer.from(match[1].trim(), 'base64').toString('utf8').slice(0, 8000);
+      } catch (e) {
+        return `Invalid Base64: ${e.message}`;
+      }
+    }
+    return null;
+  }
+
+  if (miniApp === 'uuid') {
+    const match = trimmed.match(/^\/?uuid(?:\s+(\d+))?$/i);
+    if (!match) return null;
+    const count = Math.min(Math.max(parseInt(match[1] || '5', 10) || 5, 1), 10);
+    return Array.from({ length: count }, () => crypto.randomUUID()).join('\n');
+  }
+
+  return null;
+}
+
+function botHelpText(bot) {
+  const parts = [`Hi! I'm @${bot.username}, an automated bot.`];
+  const hint = miniAppHint(bot.mini_app);
+  if (hint) parts.push(hint);
+  const rules = botRepliesFor(bot.user_id);
+  if (rules.length) {
+    parts.push(`Try: ${rules.map((r) => `“${r.trigger}”`).join(', ')}`);
+  }
+  if (parts.length === 1) parts.push('My owner has not added any replies yet.');
+  return parts.join('\n\n');
+}
+
+function computeBotReply(bot, conversation, body) {
+  const text = String(body || '').trim();
+  if (!text) return null;
+  const lower = text.toLowerCase();
+
+  for (const rule of botRepliesFor(bot.user_id)) {
+    const trigger = rule.trigger.trim().toLowerCase();
+    if (trigger && lower.includes(trigger)) return rule.reply.slice(0, 8000);
+  }
+
+  const mini = miniAppReply(bot.mini_app, text);
+  if (mini) return mini;
+
+  if (['/help', 'help', '/start', 'start'].includes(lower)) {
+    return botHelpText(bot);
+  }
+
+  // A brand-new bot with no rules/mini-app should still explain itself in DMs.
+  if (
+    conversation.kind !== 'group' &&
+    botRepliesFor(bot.user_id).length === 0 &&
+    (!bot.mini_app || bot.mini_app === 'none')
+  ) {
+    return botHelpText(bot);
+  }
+  return null;
+}
+
+function sendBotMessage(conversation, bot, text) {
+  const row = {
+    id: crypto.randomUUID(),
+    conversation_id: conversation.id,
+    sender_id: bot.user_id,
+    kind: 'text',
+    body: text,
+    attachment_id: null,
+    created_at: Date.now(),
+    read_at: null,
+    reply_to: null,
+  };
+  db.prepare(
+    `INSERT INTO messages (id, conversation_id, sender_id, kind, body, attachment_id, created_at, read_at, reply_to)
+     VALUES (@id, @conversation_id, @sender_id, @kind, @body, @attachment_id, @created_at, @read_at, @reply_to)`
+  ).run(row);
+  const message = publicMessage(row);
+  for (const uid of conversationParticipants(conversation)) {
+    if (uid !== bot.user_id) {
+      notifyUser(uid, {
+        type: 'message',
+        conversationId: conversation.id,
+        message,
+      });
+    }
+  }
+}
+
+/// Answers [body] with every enabled bot that participates in [conversation].
+function runBotReplies(conversation, senderId, body) {
+  // Never let bots talk to each other: two bots in one group would otherwise
+  // ping-pong forever.
+  const sender = db.prepare('SELECT role FROM users WHERE id = ?').get(senderId);
+  if (!sender || sender.role === 'bot') return;
+
+  const participants = conversationParticipants(conversation);
+  if (participants.length === 0) return;
+  const placeholders = participants.map(() => '?').join(',');
+  const bots = db
+    .prepare(
+      `SELECT b.*, u.username
+       FROM bots b JOIN users u ON u.id = b.user_id
+       WHERE b.enabled = 1 AND b.mode = 'builtin' AND b.user_id IN (${placeholders})`
+    )
+    .all(...participants);
+  for (const bot of bots) {
+    if (bot.user_id === senderId) continue;
+    const reply = computeBotReply(bot, conversation, body);
+    if (reply) sendBotMessage(conversation, bot, reply);
+  }
+}
+
+router.get('/bots', (req, res) => {
+  const rows = db
+    .prepare('SELECT * FROM bots WHERE owner_id = ? ORDER BY created_at DESC')
+    .all(req.user.sub);
+  res.json({ bots: rows.map(botToPublic) });
+});
+
+router.post('/bots', (req, res) => {
+  if (req.user.bot)
+    return res.status(403).json({ error: 'bots cannot create bots' });
+  const name = String(req.body?.name || '').trim();
+  if (name.length < 1 || name.length > 48)
+    return res.status(400).json({ error: 'bot name must be 1-48 characters' });
+  const description = String(req.body?.description || '').trim().slice(0, 300);
+  const requested = String(req.body?.miniApp || 'none');
+  const miniApp = MINI_APPS.has(requested) ? requested : 'none';
+  const requestedMode = String(req.body?.mode || 'api');
+  const mode = BOT_MODES.has(requestedMode) ? requestedMode : 'api';
+  const now = Date.now();
+  const id = crypto.randomUUID();
+  const username = botUsername(name);
+  db.prepare(
+    `INSERT INTO users (id, username, display_name, bio, role, is_verified, password_hash, created_at)
+     VALUES (?, ?, ?, ?, 'bot', 0, '!bot', ?)`
+  ).run(id, username, name, description, now);
+  db.prepare(
+    `INSERT INTO bots (user_id, owner_id, token, description, mini_app, mode, enabled, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 1, ?)`
+  ).run(id, req.user.sub, newBotToken(), description, miniApp, mode, now);
+  res.status(201).json({ bot: botToPublic(botRowFor(id)) });
+});
+
+router.patch('/bots/:id', (req, res) => {
+  const bot = ownedBot(req, res, req.params.id);
+  if (!bot) return;
+
+  if (req.body?.name !== undefined) {
+    const name = String(req.body.name).trim();
+    if (name.length < 1 || name.length > 48)
+      return res.status(400).json({ error: 'bot name must be 1-48 characters' });
+    db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(name, bot.user_id);
+  }
+
+  const sets = [];
+  const params = [];
+  if (req.body?.description !== undefined) {
+    const description = String(req.body.description).trim().slice(0, 300);
+    sets.push('description = ?');
+    params.push(description);
+    db.prepare('UPDATE users SET bio = ? WHERE id = ?').run(description, bot.user_id);
+  }
+  if (req.body?.miniApp !== undefined) {
+    const requested = String(req.body.miniApp);
+    if (!MINI_APPS.has(requested))
+      return res.status(400).json({ error: 'unknown mini-app' });
+    sets.push('mini_app = ?');
+    params.push(requested);
+  }
+  if (req.body?.mode !== undefined) {
+    const requested = String(req.body.mode);
+    if (!BOT_MODES.has(requested))
+      return res.status(400).json({ error: 'unknown bot mode' });
+    sets.push('mode = ?');
+    params.push(requested);
+  }
+  if (req.body?.enabled !== undefined) {
+    sets.push('enabled = ?');
+    params.push(req.body.enabled === false ? 0 : 1);
+  }
+  if (sets.length > 0) {
+    db.prepare(`UPDATE bots SET ${sets.join(', ')} WHERE user_id = ?`).run(
+      ...params,
+      bot.user_id
+    );
+  }
+  res.json({ bot: botToPublic(botRowFor(bot.user_id)) });
+});
+
+router.post('/bots/:id/token', (req, res) => {
+  const bot = ownedBot(req, res, req.params.id);
+  if (!bot) return;
+  db.prepare('UPDATE bots SET token = ? WHERE user_id = ?').run(
+    newBotToken(),
+    bot.user_id
+  );
+  res.json({ bot: botToPublic(botRowFor(bot.user_id)) });
+});
+
+router.delete('/bots/:id', (req, res) => {
+  const bot = ownedBot(req, res, req.params.id);
+  if (!bot) return;
+  const botId = bot.user_id;
+
+  const conversations = db
+    .prepare(
+      `SELECT DISTINCT c.* FROM conversations c
+       WHERE (c.kind != 'group' AND (c.user_low = ? OR c.user_high = ?))
+          OR (c.kind = 'group' AND EXISTS (
+                SELECT 1 FROM group_members gm
+                WHERE gm.conversation_id = c.id AND gm.user_id = ?))`
+    )
+    .all(botId, botId, botId);
+
+  for (const conversation of conversations) {
+    if (conversation.kind === 'group') {
+      db.prepare('DELETE FROM messages WHERE conversation_id = ? AND sender_id = ?').run(
+        conversation.id,
+        botId
+      );
+      db.prepare('DELETE FROM group_members WHERE conversation_id = ? AND user_id = ?').run(
+        conversation.id,
+        botId
+      );
+    } else {
+      db.prepare('DELETE FROM messages WHERE conversation_id = ?').run(conversation.id);
+      db.prepare('DELETE FROM group_members WHERE conversation_id = ?').run(conversation.id);
+      db.prepare('DELETE FROM conversations WHERE id = ?').run(conversation.id);
+    }
+  }
+
+  db.prepare('DELETE FROM bots WHERE user_id = ?').run(botId);
+  db.prepare('DELETE FROM users WHERE id = ?').run(botId);
+  res.json({ ok: true });
+});
+
+router.post('/bots/:id/replies', (req, res) => {
+  const bot = ownedBot(req, res, req.params.id);
+  if (!bot) return;
+  const trigger = String(req.body?.trigger || '').trim().slice(0, 80);
+  const reply = String(req.body?.reply || '').trim().slice(0, 8000);
+  if (!trigger || !reply)
+    return res.status(400).json({ error: 'trigger and reply are required' });
+  db.prepare(
+    `INSERT INTO bot_replies (id, bot_id, trigger, reply, created_at)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(crypto.randomUUID(), bot.user_id, trigger, reply, Date.now());
+  res.status(201).json({ bot: botToPublic(botRowFor(bot.user_id)) });
+});
+
+router.delete('/bots/:id/replies/:replyId', (req, res) => {
+  const bot = ownedBot(req, res, req.params.id);
+  if (!bot) return;
+  db.prepare('DELETE FROM bot_replies WHERE id = ? AND bot_id = ?').run(
+    req.params.replyId,
+    bot.user_id
+  );
+  res.json({ bot: botToPublic(botRowFor(bot.user_id)) });
+});
+
 
 router.get('/users', (req, res) => {
   const query = String(req.query.query || '').trim();
@@ -126,15 +487,32 @@ router.post('/block', (req, res) => {
 });
 
 router.post('/report', (req, res) => {
+  if (req.user.bot) return res.status(403).json({ error: 'bots cannot report users' });
   const targetId = String(req.body?.targetId || '');
   const peer = loadUser(targetId);
   if (!peer) return res.status(404).json({ error: 'user not found' });
   if (targetId === req.user.sub) return res.status(400).json({ error: 'cannot report yourself' });
 
-  db.prepare(
-    'INSERT OR IGNORE INTO reports (reporter_id, target_id, reason, created_at) VALUES (?, ?, ?, ?)'
-  ).run(req.user.sub, targetId, String(req.body?.reason || '').slice(0, 600), Date.now());
+  const reporter = loadUser(req.user.sub);
+  const reason = String(req.body?.reason || '').slice(0, 600);
+  const createdAt = Date.now();
+  const result = db
+    .prepare(
+      'INSERT OR IGNORE INTO reports (reporter_id, target_id, reason, created_at) VALUES (?, ?, ?, ?)'
+    )
+    .run(req.user.sub, targetId, reason, createdAt);
   res.json({ ok: true });
+
+  // Best-effort mirror of a fresh report into the project's GitHub issue
+  // tracker. A duplicate report (ignored above) does not open a second issue,
+  // and a GitHub failure never affects the stored report or the response.
+  if (result.changes > 0 && reportingConfigured()) {
+    fileReportIssue({ reporter, target: peer, reason, createdAt })
+      .then((issue) => {
+        if (issue.number) console.log(`Report @${reporter.username} -> @${peer.username}: issue #${issue.number}`);
+      })
+      .catch((err) => console.error('Report -> GitHub issue failed:', err.message));
+  }
 });
 
 const requireMod = (req, res, next) => {
@@ -181,10 +559,20 @@ router.post('/ban', requireMod, (req, res) => {
   const peer = loadUser(targetId);
   if (!peer) return res.status(404).json({ error: 'user not found' });
   if (peer.role === 'mod') return res.status(400).json({ error: 'cannot ban a moderator' });
+  if (peer.role === 'bot') return res.status(400).json({ error: 'cannot ban a bot' });
   const banned = req.body?.banned !== false;
   db.prepare('UPDATE users SET role = ? WHERE id = ?').run(banned ? 'banned' : 'user', targetId);
   if (banned) notifyUser(targetId, { type: 'banned' });
   res.json({ ok: true, role: banned ? 'banned' : 'user' });
+});
+
+router.post('/verified', requireMod, (req, res) => {
+  const targetId = String(req.body?.targetId || '');
+  const peer = loadUser(targetId);
+  if (!peer) return res.status(404).json({ error: 'user not found' });
+  const verified = req.body?.verified !== false;
+  db.prepare('UPDATE users SET is_verified = ? WHERE id = ?').run(verified ? 1 : 0, targetId);
+  res.json({ ok: true, isVerified: !!verified });
 });
 
 router.get('/banned', requireMod, (req, res) => {
@@ -529,6 +917,99 @@ router.post('/conversations/group', (req, res) => {
   res.status(201).json({ conversation: publicConversation(conversation, me) });
 });
 
+/// Opens (or reuses) a support conversation between the caller and every
+/// moderator. The request becomes the first message so the ticket is visible
+/// in the normal chat UI; moderators are invited as regular group members.
+router.post('/support', (req, res) => {
+  if (req.user.bot) return res.status(403).json({ error: 'bots cannot open support tickets' });
+  const me = req.user.sub;
+  const meRow = loadUser(me);
+  if (!meRow) return res.status(404).json({ error: 'user not found' });
+
+  const subject = String(req.body?.subject || '').trim().slice(0, 120);
+  const text = String(req.body?.message || '').trim().slice(0, 8000);
+  if (!text) return res.status(400).json({ error: 'describe the issue first' });
+
+  const now = Date.now();
+  const name = `Support · @${meRow.username}`.slice(0, 64);
+  const mods = db
+    .prepare("SELECT id FROM users WHERE role = 'mod' AND id != ?")
+    .all(me);
+
+  let conversation = db
+    .prepare(
+      `SELECT * FROM conversations
+       WHERE kind = 'group' AND user_low = ? AND name = ?
+       ORDER BY created_at DESC LIMIT 1`
+    )
+    .get(me, name);
+
+  const insertMember = db.prepare(
+    `INSERT OR IGNORE INTO group_members (conversation_id, user_id, role, muted, last_read_at, created_at)
+     VALUES (?, ?, ?, 0, ?, ?)`
+  );
+
+  if (!conversation) {
+    const id = crypto.randomUUID();
+    db.prepare(
+      `INSERT INTO conversations (id, user_low, user_high, kind, name, description, created_at)
+       VALUES (@id, @user_low, @user_high, 'group', @name, @description, @created_at)`
+    ).run({
+      id,
+      user_low: me,
+      user_high: id,
+      name,
+      description: 'Commsuite technical support',
+      created_at: now,
+    });
+    insertMember.run(id, me, 'owner', now, now);
+    conversation = getConversationOr404(id);
+  }
+
+  for (const mod of mods) insertMember.run(conversation.id, mod.id, 'member', now, now);
+
+  const body = subject ? `Subject: ${subject}\n\n${text}` : text;
+  const row = {
+    id: crypto.randomUUID(),
+    conversation_id: conversation.id,
+    sender_id: me,
+    kind: 'text',
+    body,
+    attachment_id: null,
+    created_at: now,
+    read_at: null,
+    reply_to: null,
+  };
+  db.prepare(
+    `INSERT INTO messages (id, conversation_id, sender_id, kind, body, attachment_id, created_at, read_at, reply_to)
+     VALUES (@id, @conversation_id, @sender_id, @kind, @body, @attachment_id, @created_at, @read_at, @reply_to)`
+  ).run(row);
+  const message = publicMessage(row);
+
+  // Moderators who were just invited need the group in their list as well as
+  // the ticket message itself.
+  broadcastGroup(
+    conversation,
+    { type: 'group-updated', conversationId: conversation.id, name },
+    me
+  );
+  for (const uid of conversationParticipants(conversation)) {
+    if (uid !== me) {
+      notifyUser(uid, {
+        type: 'message',
+        conversationId: conversation.id,
+        message,
+      });
+    }
+  }
+
+  res.status(201).json({
+    conversation: publicConversation(conversation, me),
+    invited: mods.length,
+    message,
+  });
+});
+
 router.get('/conversations/:id', (req, res) => {
   const me = req.user.sub;
   const conversation = getConversationOr404(req.params.id);
@@ -833,6 +1314,9 @@ router.post('/conversations/:id/messages', (req, res) => {
   for (const uid of conversationParticipants(conversation)) {
     if (uid !== me) notifyUser(uid, event); // skip sender: it already appends from the HTTP response
   }
+
+  if (kind === 'text') runBotReplies(conversation, me, body);
+  queueBotUpdates(conversation, me, message.id);
 
   res.status(201).json({ message });
 });

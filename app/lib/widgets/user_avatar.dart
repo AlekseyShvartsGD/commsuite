@@ -23,6 +23,7 @@ class UserAvatar extends StatelessWidget {
   final String? name;
   final String? seed;
   final bool showOnline;
+  final bool isVerified;
   final double radius;
 
   const UserAvatar({
@@ -30,6 +31,7 @@ class UserAvatar extends StatelessWidget {
     this.name,
     this.seed,
     this.showOnline = false,
+    this.isVerified = false,
     this.radius = 22,
   });
 
@@ -56,28 +58,48 @@ class UserAvatar extends StatelessWidget {
         style: TextStyle(fontSize: radius * 0.85, fontWeight: FontWeight.w600),
       ),
     );
-    if (!showOnline) return avatar;
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        avatar,
-        Positioned(
-          right: -radius * 0.15,
-          bottom: -radius * 0.15,
-          child: Container(
-            width: radius * 0.8,
-            height: radius * 0.8,
-            decoration: BoxDecoration(
-              color: Colors.greenAccent,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Theme.of(context).colorScheme.surface,
-                width: 2,
+    Widget child = avatar;
+    if (showOnline) {
+      child = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          avatar,
+          Positioned(
+            right: -radius * 0.15,
+            bottom: -radius * 0.15,
+            child: Container(
+              width: radius * 0.8,
+              height: radius * 0.8,
+              decoration: BoxDecoration(
+                color: Colors.greenAccent,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.surface,
+                  width: 2,
+                ),
               ),
             ),
           ),
-        ),
-      ],
-    );
+        ],
+      );
+    }
+    if (isVerified) {
+      child = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          child,
+          Positioned(
+            right: -radius * 0.1,
+            top: -radius * 0.1,
+            child: Icon(
+              Icons.verified,
+              size: radius * 0.6,
+              color: Colors.blueAccent,
+            ),
+          ),
+        ],
+      );
+    }
+    return child;
   }
 }

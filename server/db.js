@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
   display_name  TEXT NOT NULL,
   bio           TEXT NOT NULL DEFAULT '',
   role          TEXT NOT NULL DEFAULT 'user',
+  is_verified   INTEGER NOT NULL DEFAULT 0,
   password_hash TEXT NOT NULL,
   created_at    INTEGER NOT NULL
 );
@@ -65,6 +66,44 @@ CREATE TABLE IF NOT EXISTS group_members (
 );
 
 CREATE INDEX IF NOT EXISTS idx_gm_user ON group_members(user_id);
+
+-- Automated accounts. A bot is a real user row (role = 'bot') so it appears in
+-- the directory, can be added to chats/groups, and has its own message history.
+CREATE TABLE IF NOT EXISTS bots (
+  user_id     TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  owner_id    TEXT NOT NULL,
+  token       TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  mini_app    TEXT NOT NULL DEFAULT 'none',
+  mode        TEXT NOT NULL DEFAULT 'api',
+  enabled     INTEGER NOT NULL DEFAULT 1,
+  created_at  INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_bots_owner ON bots(owner_id);
+
+-- Keyword -> reply rules for a bot.
+CREATE TABLE IF NOT EXISTS bot_replies (
+  id         TEXT PRIMARY KEY,
+  bot_id     TEXT NOT NULL REFERENCES bots(user_id) ON DELETE CASCADE,
+  trigger    TEXT NOT NULL,
+  reply      TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_bot_replies_bot ON bot_replies(bot_id);
+
+-- Messages waiting for a bot's external program. Rows are acknowledged (and
+-- deleted) as the bot consumes them through GET /api/bot/updates.
+CREATE TABLE IF NOT EXISTS bot_updates (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  bot_id          TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  message_id      TEXT NOT NULL,
+  created_at      INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_bot_updates_bot ON bot_updates(bot_id, id);
 
 CREATE TABLE IF NOT EXISTS attachments (
   id         TEXT PRIMARY KEY,
@@ -118,8 +157,8 @@ const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name)
 if (!userCols.includes('bio')) {
   db.exec("ALTER TABLE users ADD COLUMN bio TEXT NOT NULL DEFAULT ''");
 }
-if (!userCols.includes('role')) {
-  db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'");
+if (!userCols.includes('is_verified')) {
+  db.exec("ALTER TABLE users ADD COLUMN is_verified INTEGER NOT NULL DEFAULT 0");
 }
 const gameCols = db.prepare('PRAGMA table_info(games)').all().map((c) => c.name);
 if (!gameCols.includes('guess_count')) {
@@ -154,6 +193,23 @@ if (!msgCols.includes('deleted')) {
 if (!msgCols.includes('reactions')) {
   db.exec("ALTER TABLE messages ADD COLUMN reactions TEXT NOT NULL DEFAULT '{}'");
 }
+
+// Bots predating the public bot API have no token yet. Mint one for each so
+// external programs can authenticate with `Authorization: Bearer cmsb_…`.
+const botCols = db.prepare('PRAGMA table_info(bots)').all().map((c) => c.name);
+if (!botCols.includes('token')) {
+  db.exec("ALTER TABLE bots ADD COLUMN token TEXT NOT NULL DEFAULT ''");
+}
+if (!botCols.includes('mode')) {
+  db.exec("ALTER TABLE bots ADD COLUMN mode TEXT NOT NULL DEFAULT 'builtin'");
+}
+for (const bot of db.prepare("SELECT user_id FROM bots WHERE token = ''").all()) {
+  db.prepare('UPDATE bots SET token = ? WHERE user_id = ?').run(
+    `cmsb_${crypto.randomBytes(24).toString('hex')}`,
+    bot.user_id
+  );
+}
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_bots_token ON bots(token)');
 
 export function pairKey(a, b) {
   return a < b ? [a, b] : [b, a];
@@ -205,7 +261,7 @@ export function groupMembers(conversationId) {
   return db
     .prepare(
       `SELECT gm.user_id, gm.role AS member_role, gm.muted, gm.last_read_at, gm.created_at AS joined_at,
-              u.username, u.display_name, u.bio, u.role AS user_role
+              u.username, u.display_name, u.bio, u.role AS user_role, u.is_verified
        FROM group_members gm
        JOIN users u ON u.id = gm.user_id
        WHERE gm.conversation_id = ?
@@ -281,6 +337,7 @@ export function publicConversation(c, me) {
           display_name: m.display_name,
           bio: m.bio ?? '',
           role: m.user_role ?? 'user',
+          is_verified: !!m.is_verified,
           created_at: m.joined_at,
         }),
         role: m.member_role,
@@ -304,6 +361,8 @@ export function publicUser(row) {
     displayName: row.display_name,
     bio: row.bio ?? '',
     role: row.role ?? 'user',
+    isVerified: !!row.is_verified,
+    isBot: row.role === 'bot',
     createdAt: row.created_at,
   };
 }
@@ -356,6 +415,34 @@ export function publicMessage(row, attachment) {
     deleted: !!row.deleted,
     reactions,
   };
+}
+
+/// Queues [messageId] for every enabled bot participating in [conversation]
+/// except the sender. External bot programs consume these through the bot API.
+export function queueBotUpdates(conversation, senderId, messageId) {
+  const sender = db.prepare('SELECT role FROM users WHERE id = ?').get(senderId);
+  if (!sender || sender.role === 'bot') return;
+
+  const participants = conversationParticipants(conversation);
+  if (participants.length === 0) return;
+  const placeholders = participants.map(() => '?').join(',');
+  const bots = db
+    .prepare(
+      `SELECT user_id FROM bots
+       WHERE enabled = 1 AND user_id IN (${placeholders})`
+    )
+    .all(...participants);
+  if (bots.length === 0) return;
+
+  const insert = db.prepare(
+    `INSERT INTO bot_updates (bot_id, conversation_id, message_id, created_at)
+     VALUES (?, ?, ?, ?)`
+  );
+  const now = Date.now();
+  for (const bot of bots) {
+    if (bot.user_id === senderId) continue;
+    insert.run(bot.user_id, conversation.id, messageId, now);
+  }
 }
 
 export function attachmentRowToPublic(row) {

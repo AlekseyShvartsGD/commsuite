@@ -230,17 +230,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
               name: _user.displayName,
               seed: _user.username,
               showOnline: online,
+              isVerified: _user.isVerified,
               radius: 52,
             ),
           ),
           const SizedBox(height: 16),
           Center(
-            child: Text(
-              _user.displayName,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  _user.displayName,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (_user.isVerified) ...[
+                  const SizedBox(width: 6),
+                  Icon(Icons.verified, size: 20, color: Colors.blueAccent),
+                ],
+              ],
             ),
           ),
           const SizedBox(height: 4),
@@ -252,6 +262,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
           ),
+          if (_user.isBot) ...[
+            const SizedBox(height: 10),
+            Center(
+              child: Chip(
+                avatar: const Icon(Icons.smart_toy_outlined, size: 16),
+                label: Text(
+                  L.t('Automated account', ru: 'Автоматический аккаунт'),
+                ),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ],
           const SizedBox(height: 6),
           Center(
             child: Text(
@@ -288,16 +310,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   label: L.t('Message', ru: 'Сообщение'),
                   onTap: _message,
                 ),
-                _ActionButton(
-                  icon: Icons.call,
-                  label: L.t('Call', ru: 'Звонок'),
-                  onTap: () => _call(false),
-                ),
-                _ActionButton(
-                  icon: Icons.videocam_outlined,
-                  label: L.t('Video', ru: 'Видео'),
-                  onTap: () => _call(true),
-                ),
+                if (!_user.isBot) ...[
+                  _ActionButton(
+                    icon: Icons.call,
+                    label: L.t('Call', ru: 'Звонок'),
+                    onTap: () => _call(false),
+                  ),
+                  _ActionButton(
+                    icon: Icons.videocam_outlined,
+                    label: L.t('Video', ru: 'Видео'),
+                    onTap: () => _call(true),
+                  ),
+                ],
               ],
             )
           else
@@ -332,7 +356,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onTap: _isSelf ? _editBio : null,
           ),
           const Divider(),
-          if (!_isSelf) ...[
+          if (!_isSelf && !_user.isBot) ...[
             ListTile(
               leading: Icon(
                 blocked ? Icons.person_off_outlined : Icons.block_outlined,

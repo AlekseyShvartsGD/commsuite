@@ -4,7 +4,7 @@ import db, {
   isBlockedAny,
   markConversationRead,
 } from './db.js';
-import { verifyToken } from './auth.js';
+import { verifyToken, resolveToken } from './auth.js';
 
 const clients = new Map();
 
@@ -49,7 +49,7 @@ export function attachRealtime(server) {
     }
     let user;
     try {
-      user = verifyToken(url.searchParams.get('token') || '');
+      user = resolveToken(url.searchParams.get('token') || '');
       const banned = db.prepare('SELECT role FROM users WHERE id = ?').get(user.sub);
       if (!banned || banned.role === 'banned') throw new Error('account banned');
     } catch {

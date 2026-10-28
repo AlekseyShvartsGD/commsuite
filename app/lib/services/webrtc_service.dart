@@ -9,6 +9,7 @@ class WebRTCService {
   RTCPeerConnection? _pc;
   MediaStream? _localStream;
   bool _remoteSet = false;
+  bool _polite = false;
   final List<RTCIceCandidate> _pendingIce = [];
 
   final RTCVideoRenderer localRenderer = RTCVideoRenderer();
@@ -77,8 +78,17 @@ class WebRTCService {
     required void Function(String kind, Map? payload) onSignal,
     required void Function() onConnected,
     required void Function() onDisconnected,
+    bool polite = false,
   }) async {
-    await closePeer();
+    // Perfect-negotiation role for offer collisions: exactly one side (the
+    // "polite" one) yields when both send an offer at once. The controller
+    // derives it from the two user ids so both ends always agree.
+    _polite = polite;
+    // Reuse the live connection across re-offers. Recreating it on every
+    // incoming offer tore down tracks/negotiation mid-call, which produced the
+    // "setRemoteDescription ... wrong state stable" and m-line mismatch errors
+    // and left the video tiles black.
+    if (_pc != null) return;
     _remoteSet = false;
     _pendingIce.clear();
     final iceConfig = await AppConfig.fetchIceConfig();
@@ -132,6 +142,11 @@ class WebRTCService {
   Future<RTCSessionDescription?> createOffer() async {
     final pc = _pc;
     if (pc == null) return null;
+    // Never fire a fresh offer while a negotiation is already in flight: that
+    // is exactly the offer/offer glare that yields the m-line order errors.
+    if (await pc.getSignalingState() != RTCSignalingState.RTCSignalingStateStable) {
+      return null;
+    }
     final desc = await pc.createOffer({'offerToReceiveAudio': true, 'offerToReceiveVideo': true});
     await pc.setLocalDescription(desc);
     return desc;
@@ -140,6 +155,11 @@ class WebRTCService {
   Future<RTCSessionDescription?> createAnswer() async {
     final pc = _pc;
     if (pc == null) return null;
+    // Only answer when we actually hold a remote offer.
+    if (await pc.getSignalingState() !=
+        RTCSignalingState.RTCSignalingStateHaveRemoteOffer) {
+      return null;
+    }
     final desc = await pc.createAnswer({'offerToReceiveAudio': true, 'offerToReceiveVideo': true});
     await pc.setLocalDescription(desc);
     return desc;
@@ -151,8 +171,22 @@ class WebRTCService {
   Future<void> _setRemote(Map<String, dynamic> m) async {
     final pc = _pc;
     if (pc == null) return;
+    final sdp = '${m['sdp'] ?? ''}';
+    if (sdp.isEmpty) return; // ignore a malformed/empty description
     final type = (m['type'] as String?) == 'offer' ? 'offer' : 'answer';
-    await pc.setRemoteDescription(RTCSessionDescription('${m['sdp'] ?? ''}', type));
+    final state = await pc.getSignalingState();
+    if (type == 'answer') {
+      // A duplicate/stale answer arrives when we are back in 'stable', and
+      // applying it throws "Called in wrong state: stable". Only accept an
+      // answer while it can match an outstanding local offer.
+      if (state != RTCSignalingState.RTCSignalingStateHaveLocalOffer) return;
+    } else if (state == RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
+      // Offer collision (both ends offered). The impolite peer ignores the
+      // incoming offer and keeps its own; the polite peer rolls its offer back
+      // (implicit rollback in setRemoteDescription) and accepts theirs.
+      if (!_polite) return;
+    }
+    await pc.setRemoteDescription(RTCSessionDescription(sdp, type));
     _remoteSet = true;
     await _flushIce();
   }

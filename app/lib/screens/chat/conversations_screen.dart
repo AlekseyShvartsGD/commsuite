@@ -140,7 +140,7 @@ class _ConversationTile extends StatelessWidget {
     }
     subtitle ??= isGroup
         ? L.t('Group chat', ru: 'Групповой чат')
-        : L.t('Say hello 👋', ru: 'Поздоровайтесь 👋');
+        : L.t('Say hi!', ru: 'Поздоровайтесь!');
 
     return ListTile(
       onTap: () => Navigator.of(context).push(
@@ -170,6 +170,7 @@ class _ConversationTile extends StatelessWidget {
           name: isGroup ? conversation.title : peer!.displayName,
           seed: isGroup ? conversation.id : peer!.username,
           showOnline: isGroup ? false : online,
+          isVerified: !isGroup && peer!.isVerified,
           radius: 24,
         ),
       ),
@@ -350,6 +351,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
                             name: user.displayName,
                             seed: user.username,
                             showOnline: true,
+                            isVerified: user.isVerified,
                           ),
                         ),
                         title: Text(user.displayName),

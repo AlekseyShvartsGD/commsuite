@@ -808,6 +808,27 @@ class CommsController extends ChangeNotifier {
     }
   }
 
+  /// Opens the support ticket conversation, inviting all moderators.
+  Future<Conversation?> requestSupport({
+    String subject = '',
+    required String message,
+  }) async {
+    final t = token;
+    if (t == null) return null;
+    try {
+      final conv = await Api.requestSupport(
+        t,
+        subject: subject,
+        message: message,
+      );
+      _replaceConversation(conv);
+      return conv;
+    } on ApiException catch (e) {
+      showSnack(e.message);
+      return null;
+    }
+  }
+
   Future<Conversation?> updateGroup(
     Conversation conv, {
     String? name,
@@ -1147,6 +1168,12 @@ class CommsController extends ChangeNotifier {
   bool hasMoreMessages(String conversationId) =>
       _completedLoads.contains(conversationId);
 
+  /// Deterministic perfect-negotiation role: when both ends offer at once,
+  //  exactly one (the peer with the smaller id) is "polite" and yields. Both
+  //  ends compute the same answer from the two user ids, so they never both
+  //  yield or both keep their offer.
+  bool _isPolite(String peerId) => (user?.id ?? '').compareTo(peerId) < 0;
+
   Future<bool> startCall(User peer, {required bool video}) async {
     if (call != null) return false;
     if (isBlocked(peer.id)) {
@@ -1252,6 +1279,7 @@ class CommsController extends ChangeNotifier {
       onSignal: (kind, payload) => _sendSignal(s.peer.id, kind, payload),
       onConnected: () => _markConnected(s),
       onDisconnected: () => _maybeEndSilently(s),
+      polite: _isPolite(s.peer.id),
     );
     final offer = await webrtc.createOffer();
     if (offer != null) _sendSignal(s.peer.id, 'offer', offer.toMap());
@@ -1409,6 +1437,7 @@ class CommsController extends ChangeNotifier {
                 _maybeEndSilently(active);
               }
             },
+            polite: _isPolite(peer.id),
           );
           await webrtc.setRemoteOffer(payload ?? <String, dynamic>{});
           final answer = await webrtc.createAnswer();

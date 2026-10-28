@@ -141,6 +141,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                             name: user.displayName,
                             seed: user.username,
                             showOnline: online,
+                            isVerified: user.isVerified,
                             radius: 24,
                           ),
                         ),
@@ -148,7 +149,34 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           user.displayName,
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
-                        subtitle: Text('@${user.username}'),
+                        subtitle: Row(
+                          children: [
+                            Flexible(child: Text('@${user.username}')),
+                            if (user.isBot) ...[
+                              const SizedBox(width: 6),
+                              Icon(
+                                Icons.smart_toy_outlined,
+                                size: 14,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 2),
+                              Text(
+                                L.t('Bot', ru: 'Бот'),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelSmall
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                            ],
+                          ],
+                        ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -157,19 +185,21 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               icon: const Icon(Icons.chat_bubble_outline),
                               onPressed: () => _chat(user),
                             ),
-                            IconButton(
-                              tooltip: L.t(
-                                'Voice call',
-                                ru: 'Голосовой звонок',
+                            if (!user.isBot) ...[
+                              IconButton(
+                                tooltip: L.t(
+                                  'Voice call',
+                                  ru: 'Голосовой звонок',
+                                ),
+                                icon: const Icon(Icons.call),
+                                onPressed: () => _call(user, false),
                               ),
-                              icon: const Icon(Icons.call),
-                              onPressed: () => _call(user, false),
-                            ),
-                            IconButton(
-                              tooltip: L.t('Video call', ru: 'Видеозвонок'),
-                              icon: const Icon(Icons.videocam_outlined),
-                              onPressed: () => _call(user, true),
-                            ),
+                              IconButton(
+                                tooltip: L.t('Video call', ru: 'Видеозвонок'),
+                                icon: const Icon(Icons.videocam_outlined),
+                                onPressed: () => _call(user, true),
+                              ),
+                            ],
                           ],
                         ),
                       );

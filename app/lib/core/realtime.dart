@@ -112,7 +112,7 @@ class RealtimeChannel {
         connected.value = false;
         status.value = L.t(
           'reconnecting (stale socket)',
-          ru: 'переподключение (сокет не отвечает)',
+          ru: 'переподключение',
         );
         _sub?.cancel();
         _sub = null;

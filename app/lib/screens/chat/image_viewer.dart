@@ -81,7 +81,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    L.t('Could not display image', ru: 'Не удалось показать изображение'),
+                    L.t('Could not display image', ru: 'Произошла ошибка при загрузке изображений.'),
                     style: const TextStyle(color: Colors.white70),
                   ),
                 ],

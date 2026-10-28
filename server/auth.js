@@ -29,12 +29,32 @@ export function verifyToken(token) {
   return jwt.verify(token, JWT_SECRET);
 }
 
+export function resolveToken(token) {
+  if (token.startsWith('cmsb_')) {
+    const row = db
+      .prepare(
+        `SELECT u.*, b.enabled AS bot_enabled
+         FROM bots b JOIN users u ON u.id = b.user_id
+         WHERE b.token = ?`
+      )
+      .get(token);
+    if (!row || !row.bot_enabled) throw new Error('invalid bot token');
+    return {
+      sub: row.id,
+      username: row.username,
+      displayName: row.display_name,
+      bot: true,
+    };
+  }
+  return verifyToken(token);
+}
+
 export function authMiddleware(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'unauthorized' });
   try {
-    req.user = verifyToken(token);
+    req.user = resolveToken(token);
     const row = db.prepare('SELECT role FROM users WHERE id = ?').get(req.user.sub);
     if (!row) return res.status(401).json({ error: 'unknown user' });
     if (row.role === 'banned') return res.status(403).json({ error: 'account banned' });
@@ -88,7 +108,11 @@ router.post('/login', (req, res) => {
   const username = String(req.body?.username || '').trim().toLowerCase();
   const password = String(req.body?.password || '');
   const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
-  if (!row || !bcrypt.compareSync(password, row.password_hash))
+  if (!row)
+    return res.status(401).json({ error: 'invalid username or password' });
+  if (row.role === 'bot')
+    return res.status(403).json({ error: 'bot accounts cannot sign in' });
+  if (!bcrypt.compareSync(password, row.password_hash))
     return res.status(401).json({ error: 'invalid username or password' });
   if (row.role === 'banned')
     return res.status(403).json({ error: 'account banned' });

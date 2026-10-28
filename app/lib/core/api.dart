@@ -121,6 +121,27 @@ class Api {
         body: {'targetId': userId, 'reason': reason}, token: token);
   }
 
+  /// Files an app crash (timestamp, log and device specs) to the developers.
+  /// [token] is optional: crashes can happen before sign-in.
+  static Future<void> reportCrash({
+    required String timestamp,
+    required String log,
+    required String platform,
+    Map<String, String> specs = const {},
+    String appVersion = '',
+    String? username,
+    String? token,
+  }) async {
+    await _request('POST', '/crash-report', body: {
+      'timestamp': timestamp,
+      'log': log,
+      'platform': platform,
+      'appVersion': appVersion,
+      'specs': specs,
+      if (username != null && username.isNotEmpty) 'username': username,
+    }, token: token);
+  }
+
   static Future<void> clearMessages(String token, String conversationId) async {
     await _request('DELETE', '/conversations/$conversationId/messages', token: token);
   }
@@ -138,6 +159,10 @@ class Api {
 
   static Future<void> setBan(String token, String targetId, {required bool banned}) async {
     await _request('POST', '/ban', body: {'targetId': targetId, 'banned': banned}, token: token);
+  }
+
+  static Future<void> setVerified(String token, String targetId, {required bool verified}) async {
+    await _request('POST', '/verified', body: {'targetId': targetId, 'verified': verified}, token: token);
   }
 
   static Future<List<User>> bannedUsers(String token) async {
@@ -199,6 +224,85 @@ class Api {
       'memberIds': memberIds,
     }, token: token);
     return Conversation.fromJson(data['conversation']);
+  }
+
+  /// Opens (or reuses) the caller's support conversation. The server invites
+  /// every moderator and stores [message] as the first ticket message.
+  static Future<Conversation> requestSupport(String token,
+      {String subject = '', required String message}) async {
+    final data = await _request('POST', '/support', body: {
+      'subject': subject,
+      'message': message,
+    }, token: token);
+    return Conversation.fromJson(data['conversation']);
+  }
+
+  // --- Bots ---------------------------------------------------------------
+  // Bots are real users on the server. These endpoints manage the bots owned
+  // by the signed-in account and the keyword replies / mini-app attached to
+  // each one.
+
+  static Future<List<Bot>> bots(String token) async {
+    final data = await _request('GET', '/bots', token: token);
+    return (data['bots'] as List)
+        .map((b) => Bot.fromJson(b as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<Bot> createBot(String token,
+      {required String name,
+      String description = '',
+      String miniApp = 'none',
+      String mode = 'api'}) async {
+    final data = await _request('POST', '/bots', body: {
+      'name': name,
+      'description': description,
+      'miniApp': miniApp,
+      'mode': mode,
+    }, token: token);
+    return Bot.fromJson(data['bot']);
+  }
+
+  static Future<Bot> updateBot(String token, String botId,
+      {String? name,
+      String? description,
+      String? miniApp,
+      String? mode,
+      bool? enabled}) async {
+    final data = await _request('PATCH', '/bots/$botId', body: {
+      'name': ?name,
+      'description': ?description,
+      'miniApp': ?miniApp,
+      'mode': ?mode,
+      'enabled': ?enabled,
+    }, token: token);
+    return Bot.fromJson(data['bot']);
+  }
+
+  static Future<void> deleteBot(String token, String botId) async {
+    await _request('DELETE', '/bots/$botId', token: token);
+  }
+
+  static Future<Bot> addBotReply(String token, String botId,
+      {required String trigger, required String reply}) async {
+    final data = await _request('POST', '/bots/$botId/replies', body: {
+      'trigger': trigger,
+      'reply': reply,
+    }, token: token);
+    return Bot.fromJson(data['bot']);
+  }
+
+  static Future<Bot> deleteBotReply(
+      String token, String botId, String replyId) async {
+    final data =
+        await _request('DELETE', '/bots/$botId/replies/$replyId', token: token);
+    return Bot.fromJson(data['bot']);
+  }
+
+  /// Invalidates the old token and returns a bot with its new token.
+  static Future<Bot> resetBotToken(String token, String botId) async {
+    final data = await _request('POST', '/bots/$botId/token', token: token);
+    return Bot.fromJson(data['bot']);
   }
 
   static Future<Conversation> conversation(String token, String conversationId) async {

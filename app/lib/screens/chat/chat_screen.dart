@@ -37,7 +37,6 @@ const _kReactionEmojis = [
   '💯',
   '😭',
   '💀',
-  ':)',
 ];
 
 class ChatScreen extends StatefulWidget {
@@ -259,6 +258,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 seed: isGroup ? conversation.id : (peer?.username ?? ''),
                 showOnline:
                     !isGroup && peer != null && controller.isOnline(peer.id),
+                isVerified: !isGroup && (peer?.isVerified ?? false),
               ),
               const SizedBox(width: 12),
               Expanded(

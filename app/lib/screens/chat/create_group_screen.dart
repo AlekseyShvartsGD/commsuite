@@ -149,6 +149,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                     avatar: UserAvatar(
                       name: user.displayName,
                       seed: user.username,
+                      isVerified: user.isVerified,
                     ),
                     label: Text(user.displayName),
                     onDeleted: () => _toggle(user, false),
@@ -301,6 +302,7 @@ class _SearchPeopleSheetState extends State<_SearchPeopleSheet> {
                           leading: UserAvatar(
                             name: user.displayName,
                             seed: user.username,
+                            isVerified: user.isVerified,
                           ),
                           title: Text(user.displayName),
                           subtitle: Text('@${user.username}'),

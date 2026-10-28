@@ -1,14 +1,17 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'core/api.dart';
 import 'core/error_bus.dart';
 import 'core/localizations.dart';
 import 'core/navigation.dart';
 import 'services/comms_controller.dart';
 import 'services/crash_reporter.dart';
+import 'services/device_specs.dart';
 import 'services/lock_service.dart';
 import 'services/server_auto_starter.dart';
 import 'services/server_discovery.dart';
@@ -199,15 +202,70 @@ class _CrashReportListenerState extends State<_CrashReportListener> {
   Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
-class _CrashReportDialog extends StatelessWidget {
+class _CrashReportDialog extends StatefulWidget {
   const _CrashReportDialog({required this.report});
 
   final String report;
 
   @override
+  State<_CrashReportDialog> createState() => _CrashReportDialogState();
+}
+
+class _CrashReportDialogState extends State<_CrashReportDialog> {
+  bool _sending = false;
+  bool _sent = false;
+  String? _error;
+
+  String get _report => widget.report;
+
+  /// The crash is logged with a leading `[ISO-8601]` stamp; reuse it so the
+  /// issue reflects when the crash happened, not when it was reported.
+  String _timestamp() {
+    final first = _report.trimLeft().split('\n').first.trim();
+    final match = RegExp(r'^\[(.+?)\]').firstMatch(first);
+    return match?.group(1) ?? DateTime.now().toIso8601String();
+  }
+
+  Future<void> _send() async {
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    try {
+      final controller = CommsScope.read(context);
+      final media = MediaQuery.maybeOf(context);
+      final specs = await DeviceSpecs.collect();
+      if (media != null) {
+        specs['Screen'] =
+            '${media.size.width.round()}x${media.size.height.round()} @${media.devicePixelRatio.toStringAsFixed(2)}';
+      }
+      await Api.reportCrash(
+        timestamp: _timestamp(),
+        log: _report,
+        platform: '${Platform.operatingSystem} ${Platform.operatingSystemVersion}',
+        specs: specs,
+        appVersion: await DeviceSpecs.appVersion(),
+        username: controller.user?.username,
+        token: controller.token,
+      );
+      if (!mounted) return;
+      setState(() {
+        _sending = false;
+        _sent = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _sending = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final lines = report.trim().split('\n');
+    final lines = _report.trim().split('\n');
     final summary = lines.length > 2
         ? lines[1]
         : (lines.isEmpty ? '' : lines[0]);
@@ -243,28 +301,63 @@ class _CrashReportDialog extends StatelessWidget {
               constraints: const BoxConstraints(maxHeight: 220),
               child: SingleChildScrollView(
                 child: SelectableText(
-                  report,
+                  _report,
                   style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
                 ),
               ),
             ),
+            if (_sent) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.green, size: 18),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      L.t('Report sent. Thank you!',
+                          ru: 'Отчёт отправлен. Спасибо!'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                L.t('Could not send report: ',
+                        ru: 'Не удалось отправить отчёт: ') +
+                    _error!,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.error),
+              ),
+            ],
           ],
         ),
       ),
       actions: [
         TextButton(
           onPressed: () async {
-            await Clipboard.setData(ClipboardData(text: report));
+            await Clipboard.setData(ClipboardData(text: _report));
             if (context.mounted) Navigator.of(context).pop();
           },
           child: Text(L.t('Copy log', ru: 'Копировать лог')),
         ),
-        FilledButton(
-          onPressed: () {
-            Navigator.of(context).pop();
-          },
-          child: Text(L.t('OK', ru: 'ОК')),
-        ),
+        if (!_sent)
+          FilledButton(
+            onPressed: _sending ? null : _send,
+            child: _sending
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(L.t('Report', ru: 'Сообщить')),
+          ),
+        if (!_sending)
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(L.t('Close', ru: 'Закрыть')),
+          ),
       ],
     );
   }

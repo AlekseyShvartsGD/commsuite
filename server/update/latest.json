@@ -1,22 +1,22 @@
 {
-  "installer": "/update/commsuite-setup.exe",
   "version": "1.0.40",
-  "apk": "/update/commsuite.apk",
-  "apkSize": 96249235,
-  "apkVersion": "1.0.40",
-  "publishedAt": 1792245267240,
-  "linux": "/update/commsuite-1.0.40-linux.tar.gz",
-  "linuxSha256": "b91c94344b3670049060225652bb3f5441782d76d08f68a6fc2a53f46ab8b155"
-  "installerSize": 23608832,
-  "installerSha256": "7c727afc41f1994065b0f9b3c4e87f856e2304145741af9c767e9a5e96bce3e5",
-  "mirrors": {
-    "linux": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.40/commsuite-1.0.40-linux.tar.gz"
-    "apk": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.40/commsuite.apk"
-    "installer": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.40/CommsuiteSetup.exe"
-  },
   "windowsVersion": "1.0.40",
-  "notes": "Verified badges, mod tools, support panel and developer tools; not functionable yet",
-  "apkSha256": "874c16ee31b73f9ed67ca4283d84da2b113bc86d71149d8eff7c4057491232d6",
-  "linuxVersion": "1.0.40"
-  "linuxSize": 54722560,
+  "apkVersion": "1.0.40",
+  "linuxVersion": "1.0.40",
+  "notes": "Programmable bots: real bot accounts that can be added to chats and groups, a Python bot API with long polling, and built-in replies and mini-apps. Also includes verified badges, the support panel, and developer tools.",
+  "publishedAt": 1793211594831,
+  "installer": "/update/commsuite-setup.exe",
+  "installerSize": 23654912,
+  "installerSha256": "27207281d28c7f7a2edd49fc276456f79b78d8f68ee26627b35fec91de4750e6",
+  "apk": "/update/commsuite.apk",
+  "apkSize": 96626859,
+  "apkSha256": "b2420d419c8d28b228709548b09750176192f26e966b5fd34f07524f00835602",
+  "linux": "/update/commsuite-linux-1.0.40.tar.gz",
+  "linuxSize": 21025918,
+  "linuxSha256": "f6833e1032fac23e616ad24f0ee6139e4d0213dffe76c0091021c545b22ed3bf",
+  "mirrors": {
+    "installer": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.40/commsuite-setup.exe",
+    "apk": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.40/commsuite.apk",
+    "linux": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.40/commsuite-linux-1.0.40.tar.gz"
+  }
 }

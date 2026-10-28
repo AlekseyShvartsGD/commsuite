@@ -9,5 +9,10 @@ server/update/*.tar.gz
 dist/
 installer/bin/
 installer/obj/
+installer/.vs/
 __pycache__/
 *.pyc
+*.bak
+
+# Local payload/effect tooling; never published with Commsuite.
+gdi_maker/

@@ -93,6 +93,16 @@ try {
   Write-Output "created release $tag (id $($release.id))"
 }
 
+# An existing tag may still carry an older title, notes, or the pre-release
+# flag from a test build; publishing here means it is a real release now.
+$release = Invoke-Gh PATCH "$api/repos/$Repo/releases/$($release.id)" @{
+  name        = "Commsuite $Version"
+  body        = if ($Notes) { $Notes } else { "Commsuite $Version" }
+  draft       = $false
+  prerelease  = $false
+  make_latest = "true"
+}
+
 # Collect artifacts: only files that actually exist, named so the URLs stay
 # stable (the manifest appends these exact names to the release URL).
 $assets = @()

@@ -6,6 +6,7 @@ class User {
   final String displayName;
   final String bio;
   final String role;
+  final bool isVerified;
   final DateTime? createdAt;
 
   const User({
@@ -14,6 +15,7 @@ class User {
     required this.displayName,
     this.bio = '',
     this.role = 'user',
+    this.isVerified = false,
     this.createdAt,
   });
 
@@ -23,6 +25,7 @@ class User {
         displayName: json['displayName'] as String? ?? json['username'] ?? '',
         bio: json['bio'] as String? ?? '',
         role: json['role'] as String? ?? 'user',
+        isVerified: json['isVerified'] as bool? ?? false,
         createdAt: json['createdAt'] != null
             ? DateTime.fromMillisecondsSinceEpoch(json['createdAt'] as int)
             : null,
@@ -34,18 +37,84 @@ class User {
         'displayName': displayName,
         'bio': bio,
         'role': role,
+        'isVerified': isVerified,
       };
 
   bool get isMod => role == 'mod';
+  bool get isBot => role == 'bot';
 
-  User copyWith({String? displayName, String? bio, String? role}) => User(
+  User copyWith({String? displayName, String? bio, String? role, bool? isVerified}) => User(
         id: id,
         username: username,
         displayName: displayName ?? this.displayName,
         bio: bio ?? this.bio,
         role: role ?? this.role,
+        isVerified: isVerified ?? this.isVerified,
         createdAt: createdAt,
       );
+}
+
+/// A keyword reply configured on a bot.
+class BotReply {
+  final String id;
+  final String trigger;
+  final String reply;
+
+  const BotReply({
+    required this.id,
+    required this.trigger,
+    required this.reply,
+  });
+
+  factory BotReply.fromJson(Map<String, dynamic> json) => BotReply(
+        id: json['id'] as String? ?? '',
+        trigger: json['trigger'] as String? ?? '',
+        reply: json['reply'] as String? ?? '',
+      );
+}
+
+/// An automated account. The [user] is a real directory user; the server
+/// answers messages sent to it.
+class Bot {
+  final User user;
+  final String description;
+  final String miniApp;
+  final String mode;
+  final bool enabled;
+  final String token;
+  final List<BotReply> replies;
+
+  const Bot({
+    required this.user,
+    this.description = '',
+    this.miniApp = 'none',
+    this.mode = 'api',
+    this.enabled = true,
+    this.token = '',
+    this.replies = const [],
+  });
+
+  factory Bot.fromJson(Map<String, dynamic> json) => Bot(
+        user: User.fromJson(json['user'] as Map<String, dynamic>),
+        description: json['description'] as String? ?? '',
+        miniApp: json['miniApp'] as String? ?? 'none',
+        mode: json['mode'] as String? ?? 'api',
+        enabled: json['enabled'] != false,
+        token: json['token'] as String? ?? '',
+        replies: (json['replies'] as List? ?? const [])
+            .whereType<Map>()
+            .map((r) => BotReply.fromJson(Map<String, dynamic>.from(r)))
+            .toList(),
+      );
+
+  bool get isExternal => mode == 'api';
+
+  String get miniAppLabel => switch (miniApp) {
+        'json' => 'JSON formatter',
+        'base64' => 'Base64',
+        'uuid' => 'UUID generator',
+        _ => 'None',
+      };
 }
 
 class Report {

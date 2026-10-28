@@ -370,6 +370,7 @@ class _GroupInfoSheetState extends State<GroupInfoSheet> {
       leading: UserAvatar(
         name: m.user.displayName,
         seed: m.user.username,
+        isVerified: m.user.isVerified,
         radius: 20,
       ),
       title: Text(
@@ -549,6 +550,7 @@ class _MemberPickerState extends State<_MemberPicker> {
                           leading: UserAvatar(
                             name: user.displayName,
                             seed: user.username,
+                            isVerified: user.isVerified,
                           ),
                           title: Text(user.displayName),
                           subtitle: Text('@${user.username}'),
