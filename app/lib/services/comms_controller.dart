@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../core/api.dart';
+import '../core/account.dart';
 import '../core/app_config.dart';
 import '../core/realtime.dart';
 import '../models.dart';
@@ -56,6 +57,29 @@ class CommsController extends ChangeNotifier {
   bool get authed => user != null;
   bool conversationsLoaded = false;
 
+  // ---- accounts -----------------------------------------------------------
+
+  List<AccountRecord> get accounts => AppConfig.accounts;
+
+  String? get activeAccountId => AppConfig.activeAccountId;
+
+  AccountRecord? get activeAccount => AppConfig.activeAccount;
+
+  /// Unread conversations across the account currently connected.
+  int get unreadTotal => conversations.fold(0, (sum, c) => sum + c.unread);
+
+  /// Unread for [id]: live for the active account, the value cached when it
+  /// was last active (or fetched from its server) for the others.
+  int unreadForAccount(String id) {
+    if (id == AppConfig.activeAccountId && authed) return unreadTotal;
+    return AppConfig.accountById(id)?.unread ?? 0;
+  }
+
+  /// Unread waiting in accounts other than the active one.
+  int get otherAccountsUnread => accounts
+      .where((a) => a.id != AppConfig.activeAccountId)
+      .fold(0, (sum, a) => sum + unreadForAccount(a.id));
+
   /// The realtime socket has finished its handshake. Until the server responds
   /// (it can take 10-20 s after launch) calls must NOT touch WebRTC: setting up
   /// peer connections in that window aborts the native addTrack code on Android.
@@ -66,10 +90,14 @@ class CommsController extends ChangeNotifier {
   /// shows the "redirecting to your server" screen while this is true.
   bool get serverConnecting => token != null && user == null;
 
-  /// Drops the remembered session and returns to the plain login screen.
+  /// Leaves the saved session alone but returns to the plain login screen (the
+  /// account stays available in the switcher).
   void startFreshSession() {
     _authRetry?.cancel();
-    _clearAuth();
+    channel.disconnect();
+    _resetLocalState();
+    token = null;
+    user = null;
     notifyListeners();
   }
 
@@ -237,12 +265,15 @@ class CommsController extends ChangeNotifier {
         final me = await Api.me(t);
         if (!_autoconnectGuard(t)) return;
         user = me;
+        await AppConfig.adoptLegacyToken(me, t);
         channel.connect(AppConfig.wsUrlWithToken(t));
         unawaited(refreshBlocks());
+        unawaited(refreshConversations());
+        unawaited(refreshAccountUnread());
         notifyListeners();
       } on ApiException catch (e) {
         if (e.status == 401) {
-          await _clearAuth(); // session expired -> back to the auth screen
+          await _dropActiveAccount(); // token no longer valid
           notifyListeners();
           return;
         }
@@ -272,7 +303,7 @@ class CommsController extends ChangeNotifier {
         displayName: displayName,
         bio: bio,
       );
-      _applyAuth(res.token, res.user);
+      await _applyAuth(res.token, res.user);
       return null;
     } on ApiException catch (e) {
       return e.message;
@@ -287,7 +318,7 @@ class CommsController extends ChangeNotifier {
   Future<String?> login(String username, String password) async {
     try {
       final res = await Api.login(username: username, password: password);
-      _applyAuth(res.token, res.user);
+      await _applyAuth(res.token, res.user);
       return null;
     } on ApiException catch (e) {
       return e.message;
@@ -299,24 +330,27 @@ class CommsController extends ChangeNotifier {
     }
   }
 
-  void _applyAuth(String newToken, User newUser) {
+  Future<void> _applyAuth(String newToken, User newUser) async {
     _authRetry?.cancel();
+    await _finalizeCall();
+    channel.disconnect();
+    _storeActiveUnread();
+    _resetLocalState();
     token = newToken;
     user = newUser;
-    if (AppConfig.rememberMe) {
-      AppConfig.saveToken(newToken);
-    } else {
-      AppConfig.clearToken(); // session only: forget it on app restart
-    }
+    await AppConfig.upsertAccount(
+      AccountRecord.fromUser(
+        newUser,
+        serverUrl: AppConfig.serverUrl,
+        token: newToken,
+        remember: AppConfig.rememberMe,
+      ),
+    );
+    L.setLang(await AppConfig.loadLanguage());
     channel.connect(AppConfig.wsUrlWithToken(newToken));
-    conversations.clear();
-    _messages.clear();
-    _typing.clear();
-    onlineIds.clear();
-    blockedIds.clear();
-    _completedLoads.clear();
-    _activeConversation = null;
     unawaited(refreshBlocks());
+    unawaited(refreshConversations());
+    unawaited(refreshAccountUnread());
     notifyListeners();
   }
 
@@ -333,28 +367,124 @@ class CommsController extends ChangeNotifier {
     if (!channel.connected.value && token != null) {
       unawaited(reconnect());
     }
+    if (authed) unawaited(refreshAccountUnread());
   }
 
+  /// Signs out of the active account: removes it from this device and switches
+  /// to the most recently used remaining account, if any.
   Future<void> logout() async {
     _authRetry?.cancel();
     await _finalizeCall();
     channel.disconnect();
-    await _clearAuth();
-    conversations.clear();
-    _messages.clear();
-    _typing.clear();
-    onlineIds.clear();
-    blockedIds.clear();
-    _completedLoads.clear();
-    _activeConversation = null;
-    conversationsLoaded = false;
+    _storeActiveUnread();
+    _resetLocalState();
+    await _dropActiveAccount();
     notifyListeners();
+  }
+
+  /// Removes [id]. Signing out of the active account switches to the next one.
+  Future<void> removeAccount(String id) async {
+    if (id == AppConfig.activeAccountId) {
+      await logout();
+      return;
+    }
+    await AppConfig.removeAccount(id);
+    notifyListeners();
+  }
+
+  /// Switches to a saved account without asking for a password.
+  Future<void> switchAccount(String id) async {
+    if (id == AppConfig.activeAccountId && authed) return;
+    final account = AppConfig.accountById(id);
+    if (account == null) return;
+    _authRetry?.cancel();
+    await _finalizeCall();
+    channel.disconnect();
+    _storeActiveUnread();
+    _resetLocalState();
+    await AppConfig.activateAccount(id);
+    L.setLang(await AppConfig.loadLanguage());
+    token = account.token;
+    user = null;
+    notifyListeners();
+    _autoconnect();
+    unawaited(refreshAccountUnread());
+  }
+
+  /// Drops the active account (invalid token or explicit sign-out) and moves
+  /// to the next saved account, or to the login screen when none are left.
+  Future<void> _dropActiveAccount() async {
+    _resetLocalState();
+    final id = AppConfig.activeAccountId;
+    if (id != null) await AppConfig.removeAccount(id);
+    final next = AppConfig.activeAccount;
+    if (next == null) {
+      await _clearAuth();
+      return;
+    }
+    L.setLang(await AppConfig.loadLanguage());
+    token = next.token;
+    user = null;
+    _autoconnect();
   }
 
   Future<void> _clearAuth() async {
     token = null;
     user = null;
     await AppConfig.clearToken();
+  }
+
+  void _storeActiveUnread() {
+    final id = AppConfig.activeAccountId;
+    if (id == null) return;
+    unawaited(AppConfig.setAccountUnread(id, unreadTotal));
+  }
+
+  /// Fetches unread counts for the inactive accounts so the switcher can show
+  /// real badges without keeping a socket open for every account.
+  Future<void> refreshAccountUnread() async {
+    var changed = false;
+    for (final account in AppConfig.accounts) {
+      if (account.id == AppConfig.activeAccountId) continue;
+      if (account.token.isEmpty) continue;
+      try {
+        final list = await Api.conversations(
+          account.token,
+          baseUrl: '${account.serverUrl}/api',
+        );
+        final unread = list.fold<int>(0, (sum, c) => sum + c.unread);
+        if (account.unread != unread) changed = true;
+        await AppConfig.setAccountUnread(account.id, unread);
+      } catch (_) {
+        // Offline account: keep the last known badge.
+      }
+    }
+    if (changed) notifyListeners();
+  }
+
+  void _resetLocalState() {
+    conversations.clear();
+    _messages.clear();
+    _pinned.clear();
+    _activeGames.clear();
+    _typing.clear();
+    for (final t in _typingTimers.values) {
+      t.cancel();
+    }
+    _typingTimers.clear();
+    _fileSending.clear();
+    _fileSendingUsers.clear();
+    for (final t in _fileSendingTimers.values) {
+      t.cancel();
+    }
+    _fileSendingTimers.clear();
+    onlineIds.clear();
+    blockedIds.clear();
+    _completedLoads.clear();
+    _olderLoadsInFlight.clear();
+    _messageLoadGen.clear();
+    _activeConversation = null;
+    conversationsLoaded = false;
   }
 
   void _onEvent(Map<String, dynamic> event) {

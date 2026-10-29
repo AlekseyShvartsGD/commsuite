@@ -28,8 +28,9 @@ class Api {
     String path, {
     Map<String, dynamic>? body,
     String? token,
+    String? baseUrl,
   }) async {
-    final uri = Uri.parse('${AppConfig.apiBase}$path');
+    final uri = Uri.parse('${baseUrl ?? AppConfig.apiBase}$path');
     final headers = <String, String>{
       if (body != null) 'Content-Type': 'application/json',
       if (token != null) 'Authorization': 'Bearer $token',
@@ -55,7 +56,7 @@ class Api {
           throw UnsupportedError(method);
       }
     } catch (e) {
-      throw ApiException(0, 'Cannot reach server at ${AppConfig.serverUrl}');
+      throw ApiException(0, 'Cannot reach server at ${baseUrl ?? AppConfig.serverUrl}');
     }
     Map<String, dynamic>? data;
     try {
@@ -202,8 +203,16 @@ class Api {
     return (data['users'] as List).map((u) => User.fromJson(u as Map<String, dynamic>)).toList();
   }
 
-  static Future<List<Conversation>> conversations(String token) async {
-    final data = await _request('GET', '/conversations', token: token);
+  static Future<List<Conversation>> conversations(
+    String token, {
+    String? baseUrl,
+  }) async {
+    final data = await _request(
+      'GET',
+      '/conversations',
+      token: token,
+      baseUrl: baseUrl,
+    );
     return (data['conversations'] as List)
         .map((c) => Conversation.fromJson(c as Map<String, dynamic>))
         .toList();

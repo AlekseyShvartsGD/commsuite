@@ -6,6 +6,7 @@ import '../../core/api.dart';
 import '../../models.dart';
 import '../../services/attachment_helper.dart';
 import '../../widgets/user_avatar.dart';
+import '../account/account_switcher.dart';
 import '../profile/profile_screen.dart';
 import 'chat_screen.dart';
 import 'create_group_screen.dart';
@@ -38,6 +39,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: const AccountButton(),
         title: Text(L.t('Chats', ru: 'Чаты')),
         actions: [
           IconButton(

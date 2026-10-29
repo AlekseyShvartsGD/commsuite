@@ -6,6 +6,7 @@ import '../../core/app_config.dart';
 import '../../core/app_version.dart';
 import '../../core/localizations.dart';
 import '../../services/autostart_service.dart';
+import '../../services/comms_controller.dart';
 import '../../services/lock_service.dart';
 import '../../services/webrtc_service.dart';
 import '../../widgets/passcode_setup.dart';
@@ -15,6 +16,7 @@ import '../mod/mod_banned_screen.dart';
 import '../mod/mod_verified_screen.dart';
 import '../support/support_screen.dart';
 import '../dev/developer_tools_screen.dart';
+import '../account/account_switcher.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -39,10 +41,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _cameraId = '';
   String _micId = '';
   bool _devicesLoading = false;
+  late final CommsController _controller;
+  String? _accountId;
 
   @override
   void initState() {
     super.initState();
+    _controller = CommsScope.read(context);
+    _accountId = _controller.activeAccountId;
+    _controller.addListener(_onControllerChanged);
     _serverController = TextEditingController(text: AppConfig.serverUrl);
     _turnHostController = TextEditingController(text: AppConfig.turnHost);
     _turnPortController = TextEditingController(
@@ -72,8 +79,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadDevices();
   }
 
+  /// Switching accounts keeps this tab alive (IndexedStack), so refresh the
+  /// per-account fields here instead of relying on initState.
+  void _onControllerChanged() {
+    final id = _controller.activeAccountId;
+    if (id == _accountId) return;
+    _accountId = id;
+    _cameraId = AppConfig.cameraId;
+    _micId = AppConfig.micId;
+    _serverController.text = AppConfig.serverUrl;
+    _bioController.text = _controller.user?.bio ?? '';
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    _controller.removeListener(_onControllerChanged);
     _serverController.dispose();
     _turnHostController.dispose();
     _turnPortController.dispose();
@@ -99,6 +120,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveServer() async {
     final controller = CommsScope.read(context);
     await AppConfig.setServerUrl(_serverController.text);
+    await AppConfig.moveActiveAccountToServer(AppConfig.serverUrl);
     await controller.reconnect();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -201,12 +223,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _logout() async {
     final controller = CommsScope.read(context);
+    final username = controller.user?.username;
+    final others = controller.accounts.length - 1;
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(L.t('Sign out?', ru: 'Выйти?')),
-        content: Text(L.t('You will be disconnected from this device.',
-            ru: 'Вы будете отключены от этого устройства.')),
+        content: Text(
+          username == null
+              ? L.t(
+                  'You will be disconnected from this device.',
+                  ru: 'Вы будете отключены от этого устройства.',
+                )
+              : others > 0
+              ? L.t(
+                  '@$username will be removed from this device and '
+                      'the next account will be opened.',
+                  ru: '@$username будет удалён с этого устройства, '
+                      'и откроется следующий аккаунт.',
+                )
+              : L.t(
+                  '@$username will be removed from this device. '
+                      'You can add it again later.',
+                  ru: '@$username будет удалён с этого устройства. '
+                      'Вы сможете добавить его снова позже.',
+                ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -289,6 +331,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
+          const SizedBox(height: 8),
+          const AccountsCard(),
           const SizedBox(height: 16),
           if (user != null) ...[
             Text(L.t('Your bio', ru: 'О себе'), style: theme.textTheme.titleSmall),

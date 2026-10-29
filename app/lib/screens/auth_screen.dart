@@ -7,7 +7,11 @@ import '../core/app_config.dart';
 import '../core/localizations.dart';
 
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({super.key});
+  const AuthScreen({super.key, this.addingAccount = false});
+
+  /// True when opened from the account switcher: shows a back button and pops
+  /// as soon as the new account is signed in.
+  final bool addingAccount;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -82,6 +86,9 @@ class _AuthScreenState extends State<AuthScreen>
       _busy = false;
       _error = err;
     });
+    if (err == null && widget.addingAccount && mounted) {
+      Navigator.of(context).pop(true);
+    }
   }
 
   Future<void> _saveServer() async {
@@ -98,6 +105,11 @@ class _AuthScreenState extends State<AuthScreen>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
+      appBar: widget.addingAccount
+          ? AppBar(
+              title: Text(L.t('Add account', ru: 'Добавить аккаунт')),
+            )
+          : null,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -130,22 +142,36 @@ class _AuthScreenState extends State<AuthScreen>
                     style: theme.textTheme.bodySmall,
                   ),
                   const SizedBox(height: 24),
-                  TextField(
-                    controller: _serverController,
-                    decoration: InputDecoration(
-                      labelText: L.t('Server address', ru: 'Адрес сервера'),
-                      hintText: 'http://192.168.1.10:3000',
-                      prefixIcon: const Icon(Icons.dns_outlined),
-                      border: const OutlineInputBorder(),
+                  if (!widget.addingAccount) ...[
+                    TextField(
+                      controller: _serverController,
+                      decoration: InputDecoration(
+                        labelText: L.t('Server address', ru: 'Адрес сервера'),
+                        hintText: 'http://192.168.1.10:3000',
+                        prefixIcon: const Icon(Icons.dns_outlined),
+                        border: const OutlineInputBorder(),
+                      ),
                     ),
-                  ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: _saveServer,
-                      child: Text(L.t('Save server', ru: 'Сохранить сервер')),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: _saveServer,
+                        child: Text(L.t('Save server', ru: 'Сохранить сервер')),
+                      ),
                     ),
-                  ),
+                  ] else
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.dns_outlined),
+                        title: Text(AppConfig.serverUrl),
+                        subtitle: Text(
+                          L.t(
+                            'New accounts sign in to the same server',
+                            ru: 'Новые аккаунты входят на тот же сервер',
+                          ),
+                        ),
+                      ),
+                    ),
                   const SizedBox(height: 8),
                   Material(
                     color: theme.colorScheme.surfaceContainerHighest,

@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../app.dart';
 import '../../core/api.dart';
 import '../../models.dart';
+import '../../services/comms_controller.dart';
 import '../../widgets/user_avatar.dart';
+import '../account/account_switcher.dart';
 import '../call/call_screen.dart';
 import '../chat/chat_screen.dart';
 import '../profile/profile_screen.dart';
@@ -20,16 +22,36 @@ class _ContactsScreenState extends State<ContactsScreen> {
   final _search = TextEditingController();
   List<User> _users = const [];
   bool _loading = true;
+  CommsController? _controller;
+  String? _accountId;
 
   @override
   void initState() {
     super.initState();
+    _controller = CommsScope.read(context);
+    _accountId = _controller!.activeAccountId;
+    _controller!.addListener(_onAccountChanged);
     _search.addListener(() => setState(() {}));
+    _load();
+  }
+
+  /// The People tab stays mounted while another tab is visible, so switching
+  /// accounts must clear the old directory and fetch the new one.
+  void _onAccountChanged() {
+    final id = _controller?.activeAccountId;
+    if (id == _accountId) return;
+    _accountId = id;
+    if (!mounted) return;
+    setState(() {
+      _users = const [];
+      _loading = true;
+    });
     _load();
   }
 
   @override
   void dispose() {
+    _controller?.removeListener(_onAccountChanged);
     _search.dispose();
     super.dispose();
   }
@@ -84,6 +106,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: const AccountButton(),
         title: Text(L.t('People', ru: 'Контакты')),
         actions: [
           IconButton(

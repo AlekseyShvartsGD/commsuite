@@ -1,22 +1,22 @@
 {
-  "version": "1.0.40",
-  "windowsVersion": "1.0.40",
-  "apkVersion": "1.0.40",
-  "linuxVersion": "1.0.40",
-  "notes": "Programmable bots: real bot accounts that can be added to chats and groups, a Python bot API with long polling, and built-in replies and mini-apps. Also includes verified badges, the support panel, and developer tools.",
-  "publishedAt": 1793211594831,
-  "installer": "/update/commsuite-setup.exe",
-  "installerSize": 23654912,
-  "installerSha256": "27207281d28c7f7a2edd49fc276456f79b78d8f68ee26627b35fec91de4750e6",
-  "apk": "/update/commsuite.apk",
-  "apkSize": 96626859,
-  "apkSha256": "b2420d419c8d28b228709548b09750176192f26e966b5fd34f07524f00835602",
-  "linux": "/update/commsuite-linux-1.0.40.tar.gz",
-  "linuxSize": 21025918,
-  "linuxSha256": "f6833e1032fac23e616ad24f0ee6139e4d0213dffe76c0091021c545b22ed3bf",
-  "mirrors": {
-    "installer": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.40/commsuite-setup.exe",
-    "apk": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.40/commsuite.apk",
-    "linux": "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.40/commsuite-linux-1.0.40.tar.gz"
-  }
+    "installer":  "/update/commsuite-setup.exe",
+    "version":  "1.0.41",
+    "apk":  "/update/commsuite.apk",
+    "apkSize":  96725407,
+    "mirrors":  {
+                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.41/commsuite-linux-1.0.41.tar.gz",
+                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.41/commsuite-setup.exe",
+                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.41/commsuite.apk"
+                },
+    "apkVersion":  "1.0.41",
+    "publishedAt":  1793269655959,
+    "installerSize":  23671296,
+    "linux":  "/update/commsuite-linux-1.0.41.tar.gz",
+    "installerSha256":  "1547e41a0f034b572721b843a6fcbb575ced019f52dec04590e741758a3e6fe1",
+    "linuxSha256":  "6f760383de456006635c59c305640fd4f64a4f318a03f0af929ca162a2e8d3d9",
+    "windowsVersion":  "1.0.41",
+    "notes":  "Multi-account support: keep several Commsuite accounts signed in and switch between them from the avatar in Chats and People. Each account keeps its own unread badges, language, camera and microphone; add or remove accounts without signing out of the rest.",
+    "apkSha256":  "9d5900bcfb414d5995f6d3d85c1de27c6285e1badd8daf10ae699b37b8a646ec",
+    "linuxSize":  21043135,
+    "linuxVersion":  "1.0.41"
 }
