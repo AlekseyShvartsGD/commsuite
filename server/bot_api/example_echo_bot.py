@@ -11,7 +11,7 @@
 
 from commsuite_bot import CommsuiteBot
 
-SERVER = "http://localhost:3000"
+SERVER = "https://immutably-undamaged-tortoise.cloudpub.ru"
 TOKEN = "cmsb_replace_me"
 
 
