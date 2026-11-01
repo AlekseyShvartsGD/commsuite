@@ -9,14 +9,14 @@
                     "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.42/commsuite.apk"
                 },
     "apkVersion":  "1.0.42",
-    "publishedAt":  1793524088456,
+    "publishedAt":  1793525660185,
     "installerSize":  23686144,
     "linux":  "/update/commsuite-linux-1.0.42.tar.gz",
-    "installerSha256":  "d1564020f7e8e110ca32ab5a9321aae31191f7da2a3d4d8baf547c6db350e69f",
-    "linuxSha256":  "a04092774cb7d1e244621cf25e127e17cf8f4a2a75703acdfe104811e14546fb",
+    "installerSha256":  "3d11172f1be0d0605aa4c0d8aab6df210f20b7a130449d32dd4d20d9b653c60f",
+    "linuxSha256":  "d2b407ea374cc53655c0a99e449bc98cfe203bbadf59e9b7589d0188742ff931",
     "windowsVersion":  "1.0.42",
-    "notes":  "Live streaming (B1): open a 1:1 chat and tap the broadcast icon to go live for one viewer. Media is relayed through the server TURN relay (never peer-to-peer); the viewer is receive-only, and the broadcaster can mute or turn the camera off mid-stream. Also fixes the Windows crash on app close caused by disposing the WebView2 environment after the plugin channel had already shut down.",
-    "apkSha256":  "cdb205f601b4d2e83f904e280ebe29bf7bf00a3b3f83292a9199b9a814b82245",
-    "linuxSize":  21054134,
+    "notes":  "Live streaming (B1): open a 1:1 chat and tap the broadcast icon to go live for one viewer. Media is relayed through the server TURN relay (never peer-to-peer); the viewer is receive-only, and the broadcaster can mute or turn the camera off mid-stream. Also fixes the Windows crash on app close caused by disposing the WebView2 environment after the plugin channel had already shut down. Note: this build corrects the version constants, so the app no longer reports 1.0.41 or prompts to reinstall 1.0.42 on every launch.",
+    "apkSha256":  "c61096534a5537ff41874fbd54cddc18757997a9bb2069d6ddd37c2cb1c5c21d",
+    "linuxSize":  21054577,
     "linuxVersion":  "1.0.42"
 }
