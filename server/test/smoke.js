@@ -192,6 +192,56 @@ try {
   const sig = eventsA.find((e) => e.type === 'signal');
   check('signal relayed', sig?.kind === 'call-invite' && sig?.from?.id === userB.id);
 
+  const streamId = `s_${suffix}`;
+  wsA.send(JSON.stringify({ type: 'stream-start', streamId, to: userB.id, video: true }));
+  await sleep(200);
+  const invite = eventsB.find((e) => e.type === 'stream-invite');
+  check(
+    'stream invite relayed',
+    invite?.streamId === streamId && invite?.from?.id === userA.id,
+  );
+
+  wsB.send(JSON.stringify({ type: 'stream-accept', streamId }));
+  await sleep(200);
+  const accepted = eventsA.find((e) => e.type === 'stream-accept');
+  check(
+    'stream accept relayed',
+    accepted?.streamId === streamId && accepted?.viewer?.id === userB.id,
+  );
+
+  wsA.send(JSON.stringify({
+    type: 'stream-signal',
+    streamId,
+    kind: 'offer',
+    payload: { sdp: 'v=0', type: 'offer' },
+  }));
+  await sleep(200);
+  const offer = eventsB.find((e) => e.type === 'stream-signal' && e.kind === 'offer');
+  check(
+    'stream offer relayed',
+    offer?.streamId === streamId && offer?.payload?.sdp === 'v=0',
+  );
+
+  const busyStreamId = `${streamId}_busy`;
+  wsA.send(JSON.stringify({ type: 'stream-start', streamId: busyStreamId, to: userB.id }));
+  await sleep(200);
+  const busy = eventsA.find(
+    (e) => e.type === 'stream-error' && e.streamId === busyStreamId,
+  );
+  check('second concurrent stream rejected', busy?.message === 'busy');
+
+  wsB.send(JSON.stringify({ type: 'stream-end', streamId }));
+  await sleep(200);
+  const ended = eventsA.find((e) => e.type === 'stream-end' && e.streamId === streamId);
+  check('stream end relayed', !!ended);
+
+  const restartedId = `${streamId}_restarted`;
+  wsA.send(JSON.stringify({ type: 'stream-start', streamId: restartedId, to: userB.id }));
+  await sleep(200);
+  const invites = eventsB.filter((e) => e.type === 'stream-invite');
+  check('stream can restart after end', invites.length === 2);
+  wsA.send(JSON.stringify({ type: 'stream-end', streamId: restartedId }));
+
   wsA.send(JSON.stringify({ type: 'typing', conversationId: convId }));
   await sleep(200);
   const typing = eventsB.find((e) => e.type === 'typing');

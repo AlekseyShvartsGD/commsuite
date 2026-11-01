@@ -29,6 +29,7 @@ class NotificationService {
     required VoidCallback onAccept,
     required VoidCallback onDecline,
     bool ring = true,
+    String? title,
   }) {
     _onNextFrame(() {
       _removeCall();
@@ -36,6 +37,7 @@ class NotificationService {
         builder: (_) => _CallBanner(
           displayName: displayName,
           video: video,
+          title: title,
           onAccept: () {
             _removeCall();
             onAccept();
@@ -99,6 +101,7 @@ class NotificationService {
 class _CallBanner extends StatelessWidget {
   final String displayName;
   final bool video;
+  final String? title;
   final VoidCallback onAccept;
   final VoidCallback onDecline;
 
@@ -107,6 +110,7 @@ class _CallBanner extends StatelessWidget {
     required this.video,
     required this.onAccept,
     required this.onDecline,
+    this.title,
   });
 
   @override
@@ -167,12 +171,16 @@ class _CallBanner extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            video
-                                ? L.t(
-                                    'Incoming video call',
-                                    ru: 'Входящий видеозвонок',
-                                  )
-                                : L.t('Incoming call', ru: 'Входящий звонок'),
+                            title ??
+                                (video
+                                    ? L.t(
+                                        'Incoming video call',
+                                        ru: 'Входящий видеозвонок',
+                                      )
+                                    : L.t(
+                                        'Incoming call',
+                                        ru: 'Входящий звонок',
+                                      )),
                             style: const TextStyle(
                               color: Colors.white70,
                               fontSize: 12,

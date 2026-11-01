@@ -3,7 +3,8 @@
 Self-hosted chat suite for **Android and Windows** (Flutter) with a custom Node.js backend:
 
 - 1:1 messaging (text + attachments) with typing indicators and read receipts
-- Voice and video calls over WebRTC (Google STUN out of the box; optional TURN-over-TCP relay for TCP-only / correlated-NAT networks like CloudPub tunnels)
+- Voice and video calls over WebRTC (Google STUN out of the box; server-issued TURN relay for TCP-only / correlated-NAT networks like CloudPub tunnels)
+- Live streaming: 1 broadcaster → 1 viewer, forced through the server TURN relay (no peer-to-peer media)
 - Local file manager (browse, search, rename, delete, copy/cut/paste, new folder, properties)
 - Web browser (tabbed InAppWebView with bookmarks)
 - Presence (online/offline) and a persistent accounts database
@@ -26,7 +27,7 @@ npm start      # listens on 0.0.0.0:3000
 
 - HTTP API on port `3000` (`/api/...`), WebSocket signaling on `/ws?token=<jwt>`.
 - Data is stored in `server/data/` (SQLite DB `app.db`, uploads, JWT secret). This folder is git-ignored and created on first start.
-- Smoke test (starts the server on port 3457 and runs 24 assertions):
+- Smoke test (starts the server on port 3457 and runs 30 assertions):
 
 ```bash
 npm run smoke
@@ -40,7 +41,7 @@ npm run smoke
 - `GET /api/conversations` · `GET /api/conversations/:id/messages?limit=&before=`
 - `POST /api/conversations/:id/messages` (`kind: text|file`)
 - `POST /api/attachments` (multipart) · `GET /api/attachments/:id` (streamed, same-auth)
-- WebSocket events: `ping|typing|read|signal`; server pushes `hello|presence|message|typing|read|signal|error`
+- WebSocket events: client `ping|typing|read|signal|stream-start|stream-accept|stream-decline|stream-end|stream-signal`; server pushes `hello|presence|message|typing|read|signal|stream-*|error`
 
 ## App (Flutter)
 
@@ -76,7 +77,35 @@ flutter run -d <android-device>   # phone/emulator
   - `flutter_inappwebview_android` (1.1.3) `android/build.gradle` uses `proguard-android.txt`, which AGP 8.9+ rejects → patched to `proguard-android-optimize.txt` in the pub cache.
   - `flutter_webrtc` on Android downloads the NDK (`28.2.13676358`) and libwebrtc on first build (large first build).
 - **NuGet**: `flutter_inappwebview_windows` needs `nuget.exe` on PATH; `tools/nuget/nuget.exe` is installed and added to the user PATH.
-- Calls rely on Google STUN only; if two devices are behind restrictive NATs, add a TURN server in `app/lib/services/webrtc_service.dart`.
+- Calls rely on the server-issued TURN credentials (`GET /api/turn`); when the
+  server has no TURN configured the app falls back to Google STUN.
+
+### Live streaming (B1)
+
+Milestone 1 is **1 broadcaster → 1 viewer** with the media relayed by the
+server (Cloudflare Realtime TURN, credentials from `GET /api/turn`). Live
+streams always set `iceTransportPolicy: 'relay'`, so neither video nor audio
+travels directly between the two devices. Without a configured TURN relay the
+app refuses to start a stream instead of silently degrading to P2P.
+
+Protocol (WebSocket, token-authenticated like everything else):
+
+| Client → server | Server → client | Purpose |
+|---|---|---|
+| `stream-start` `{streamId, to, video}` | `stream-invite` `{streamId, from, video}` | broadcaster invites one viewer |
+| `stream-accept` `{streamId}` | `stream-accept` `{streamId, viewer}` | viewer joins; broadcaster creates the offer |
+| `stream-decline` `{streamId}` | `stream-decline` (via `stream-end`) | viewer refuses |
+| `stream-end` `{streamId}` | `stream-end` `{streamId, reason}` | either side ends / disconnects |
+| `stream-signal` `{streamId, kind, payload}` | `stream-signal` `{streamId, from, kind, payload}` | SDP offer/answer + ICE relay |
+
+The server keeps an in-memory registry per stream: one stream per account,
+block checks before the invite, busy errors, 2-minute expiry for unanswered
+invites, and cleanup when a participant's last WebSocket closes. The viewer is
+receive-only (no camera/mic capture); the broadcaster can mute or disable the
+camera mid-stream.
+
+Open a 1:1 chat and tap the broadcast icon to go live; the other account gets
+an in-app accept/decline banner (or an OS notification while backgrounded).
 
 ### Calls on UDP-blocked networks (TURN relay)
 

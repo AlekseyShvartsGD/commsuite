@@ -79,6 +79,9 @@ class WebRTCService {
     required void Function() onConnected,
     required void Function() onDisconnected,
     bool polite = false,
+    bool sendLocal = true,
+    bool relayOnly = false,
+    Map<String, dynamic>? iceConfig,
   }) async {
     // Perfect-negotiation role for offer collisions: exactly one side (the
     // "polite" one) yields when both send an offer at once. The controller
@@ -91,8 +94,13 @@ class WebRTCService {
     if (_pc != null) return;
     _remoteSet = false;
     _pendingIce.clear();
-    final iceConfig = await AppConfig.fetchIceConfig();
-    final pc = await createPeerConnection(iceConfig);
+    var config = iceConfig ?? await AppConfig.fetchIceConfig();
+    if (relayOnly) {
+      // Live streams are server-relayed by design: never leak direct
+      // peer-to-peer host/srflx candidates even if the server omitted policy.
+      config = {...config, 'iceTransportPolicy': 'relay'};
+    }
+    final pc = await createPeerConnection(config);
     _pc = pc;
 
     pc.onIceCandidate = (candidate) {
@@ -132,7 +140,7 @@ class WebRTCService {
     // callback, which cannot be thrown across the boundary and aborts the
     // process (nativeAddTrack -> jvm.cc "Check failed: false" -> SIGABRT).
     final stream = _localStream;
-    if (stream != null) {
+    if (sendLocal && stream != null) {
       for (final track in stream.getTracks()) {
         await pc.addTrack(track, stream);
       }

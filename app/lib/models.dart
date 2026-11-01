@@ -452,6 +452,26 @@ class CallSession {
   });
 }
 
+enum LiveStreamPhase { inviting, incoming, connecting, live }
+
+/// One broadcaster -> one viewer live stream. The broadcaster sends camera and
+/// mic; the viewer only receives. Media is relayed through the TURN server.
+class LiveStreamSession {
+  final String id;
+  final User peer;
+  final bool outgoing; // true: we broadcast, false: we watch
+  final bool video;
+  LiveStreamPhase phase;
+
+  LiveStreamSession({
+    required this.id,
+    required this.peer,
+    required this.outgoing,
+    this.video = true,
+    this.phase = LiveStreamPhase.inviting,
+  });
+}
+
 class ActiveGame {
   final String id;
   final String type; // 'rps' | 'guess'

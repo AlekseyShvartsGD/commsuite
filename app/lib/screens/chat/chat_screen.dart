@@ -17,6 +17,7 @@ import '../../widgets/passcode_setup.dart';
 import '../../widgets/user_avatar.dart';
 import '../browser/scan_result_dialog.dart';
 import '../call/call_screen.dart';
+import '../stream/live_stream_screen.dart';
 import '../profile/profile_screen.dart';
 import 'group_info_sheet.dart';
 import 'image_tile.dart';
@@ -148,6 +149,17 @@ class _ChatScreenState extends State<ChatScreen> {
     if (ok && mounted) {
       Navigator.of(context)
           .push(MaterialPageRoute(builder: (_) => const CallScreen()));
+    }
+  }
+
+  Future<void> _goLive() async {
+    final controller = CommsScope.read(context);
+    final peer = conversation.peer;
+    if (peer == null) return;
+    final ok = await controller.startLiveStream(peer);
+    if (ok && mounted) {
+      Navigator.of(context)
+          .push(MaterialPageRoute(builder: (_) => const LiveStreamScreen()));
     }
   }
 
@@ -290,6 +302,11 @@ class _ChatScreenState extends State<ChatScreen> {
               tooltip: L.t('Video call', ru: 'Видеозвонок'),
               icon: const Icon(Icons.videocam),
               onPressed: () => _makeCall(true),
+            ),
+            IconButton(
+              tooltip: L.t('Go live', ru: 'Начать трансляцию'),
+              icon: const Icon(Icons.podcasts),
+              onPressed: _goLive,
             ),
           ],
           IconButton(

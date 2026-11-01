@@ -217,6 +217,7 @@ class OsNotifications {
     required String peerId,
     required String displayName,
     required bool video,
+    String? title,
   }) async {
     log('showCall: peer=$peerId video=$video ready=$_ready bg=$inBackground');
     if (!_ready) return;
@@ -270,9 +271,10 @@ class OsNotifications {
       );
       await _plugin.show(
         _callNotificationId,
-        video
-            ? L.t('Incoming video call', ru: 'Входящий видеозвонок')
-            : L.t('Incoming call', ru: 'Входящий звонок'),
+        title ??
+            (video
+                ? L.t('Incoming video call', ru: 'Входящий видеозвонок')
+                : L.t('Incoming call', ru: 'Входящий звонок')),
         displayName,
         details,
         payload: 'call:$peerId',

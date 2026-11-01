@@ -8,6 +8,11 @@ import { verifyToken, resolveToken } from './auth.js';
 
 const clients = new Map();
 
+// Live-stream sessions relayed by this server: one broadcaster -> one viewer.
+// Media itself flows through the TURN relay; this registry only owns the
+// signalling lifecycle (invite/accept/end), busy checks and crash cleanup.
+const streams = new Map();
+
 export function notifyUser(userId, payload) {
   const sockets = clients.get(userId);
   if (!sockets) return false;
@@ -98,7 +103,16 @@ export function attachRealtime(server) {
 
     ws.on('close', () => {
       const wasLast = removeClient(userId, ws);
-      if (wasLast) broadcast({ type: 'presence', userId, online: false }, userId);
+      if (wasLast) {
+        broadcast({ type: 'presence', userId, online: false }, userId);
+        // A broadcaster/viewer that vanished (killed app, lost tunnel) must not
+        // leave the other side waiting on a dead peer connection.
+        for (const stream of [...streams.values()]) {
+          if (stream.broadcasterId === userId || stream.viewerId === userId) {
+            endStream(stream, { from: userId, reason: 'disconnected' });
+          }
+        }
+      }
     });
     ws.on('error', () => {
       // 'close' follows and performs the cleanup; without this handler an
@@ -114,6 +128,34 @@ export function attachRealtime(server) {
         if (ws.readyState === ws.OPEN) ws.send(data);
       }
     }
+  }
+
+  function streamOf(userId) {
+    for (const stream of streams.values()) {
+      if (stream.broadcasterId === userId || stream.viewerId === userId) return stream;
+    }
+    return null;
+  }
+
+  function otherParticipant(stream, userId) {
+    return stream.broadcasterId === userId ? stream.viewerId : stream.broadcasterId;
+  }
+
+  function endStream(stream, reason) {
+    streams.delete(stream.id);
+    const other = reason?.from
+      ? otherParticipant(stream, reason.from)
+      : stream.broadcasterId;
+    notifyUser(other, {
+      type: 'stream-end',
+      streamId: stream.id,
+      reason: reason?.reason ?? 'ended',
+      from: reason?.from ?? null,
+    });
+  }
+
+  function streamError(ws, streamId, message) {
+    ws.send(JSON.stringify({ type: 'stream-error', streamId, message }));
   }
 
   function handleMessage(ws, msg) {
@@ -206,6 +248,82 @@ export function attachRealtime(server) {
         break;
       }
 
+      case 'stream-start': {
+        const streamId = String(msg.streamId || '').slice(0, 64);
+        const to = String(msg.to || '');
+        if (!streamId || !to || to === from.id || streams.has(streamId)) return;
+        if (isBlockedAny(from.id, to)) {
+          streamError(ws, streamId, 'blocked');
+          return;
+        }
+        const target = db.prepare('SELECT id, role FROM users WHERE id = ?').get(to);
+        if (!target || target.role === 'banned') {
+          streamError(ws, streamId, 'unavailable');
+          return;
+        }
+        if (streamOf(from.id) || streamOf(to)) {
+          streamError(ws, streamId, 'busy');
+          return;
+        }
+        const stream = {
+          id: streamId,
+          broadcasterId: from.id,
+          viewerId: to,
+          phase: 'invited',
+          createdAt: Date.now(),
+        };
+        streams.set(streamId, stream);
+        notifyUser(to, {
+          type: 'stream-invite',
+          streamId,
+          from,
+          video: msg.video !== false,
+        });
+        ws.send(JSON.stringify({ type: 'stream-ringing', streamId }));
+        break;
+      }
+
+      case 'stream-accept': {
+        const stream = streams.get(String(msg.streamId || ''));
+        if (!stream || stream.viewerId !== from.id) return;
+        stream.phase = 'live';
+        notifyUser(stream.broadcasterId, {
+          type: 'stream-accept',
+          streamId: stream.id,
+          viewer: from,
+        });
+        break;
+      }
+
+      case 'stream-decline': {
+        const stream = streams.get(String(msg.streamId || ''));
+        if (!stream || stream.viewerId !== from.id) return;
+        endStream(stream, { from: from.id, reason: 'declined' });
+        break;
+      }
+
+      case 'stream-end': {
+        const stream = streams.get(String(msg.streamId || ''));
+        if (!stream) return;
+        if (stream.broadcasterId !== from.id && stream.viewerId !== from.id) return;
+        endStream(stream, { from: from.id, reason: String(msg.reason || 'ended') });
+        break;
+      }
+
+      case 'stream-signal': {
+        const stream = streams.get(String(msg.streamId || ''));
+        if (!stream) return;
+        if (stream.broadcasterId !== from.id && stream.viewerId !== from.id) return;
+        notifyUser(otherParticipant(stream, from.id), {
+          type: 'stream-signal',
+          streamId: stream.id,
+          from,
+          kind: String(msg.kind || ''),
+          payload: msg.payload ?? null,
+        });
+        break;
+      }
+
       default:
         ws.send(JSON.stringify({ type: 'error', message: `unknown type: ${msg.type}` }));
     }
@@ -225,6 +343,13 @@ export function attachRealtime(server) {
             ws.ping();
           } catch (_) {}
         }
+      }
+    }
+    // Invites that were never answered (viewer went offline without closing)
+    // expire instead of blocking both accounts forever.
+    for (const stream of [...streams.values()]) {
+      if (stream.phase === 'invited' && Date.now() - stream.createdAt > 120000) {
+        endStream(stream, { reason: 'timeout' });
       }
     }
   }, 30000);

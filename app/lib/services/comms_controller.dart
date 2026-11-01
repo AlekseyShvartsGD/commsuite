@@ -10,6 +10,7 @@ import '../core/app_config.dart';
 import '../core/realtime.dart';
 import '../models.dart';
 import '../screens/call/call_screen.dart';
+import '../screens/stream/live_stream_screen.dart';
 import 'notification_service.dart';
 import 'os_notifications.dart';
 import 'server_discovery.dart';
@@ -45,12 +46,14 @@ class CommsController extends ChangeNotifier {
 
   String? _activeConversation;
   CallSession? call;
+  LiveStreamSession? liveStream;
   StreamSubscription? _sub;
   final Map<String, Timer> _typingTimers = {};
 
   Timer? _pingTimer;
   Timer? _authRetry;
   Timer? _ringTimer;
+  Timer? _streamTimer;
   final GlobalKey<ScaffoldMessengerState> messengerKey =
       GlobalKey<ScaffoldMessengerState>();
 
@@ -94,6 +97,8 @@ class CommsController extends ChangeNotifier {
   /// account stays available in the switcher).
   void startFreshSession() {
     _authRetry?.cancel();
+    unawaited(_finalizeCall());
+    unawaited(_finalizeLiveStream());
     channel.disconnect();
     _resetLocalState();
     token = null;
@@ -231,12 +236,28 @@ class CommsController extends ChangeNotifier {
 
   Future<void> _initOsNotifications() async {
     OsNotifications.instance.onCallAnswer = (peerId) async {
+      final stream = liveStream;
+      if (stream != null &&
+          !stream.outgoing &&
+          stream.phase == LiveStreamPhase.incoming &&
+          (peerId.isEmpty || stream.peer.id == peerId)) {
+        await acceptLiveStream();
+        return;
+      }
       final s = call;
       if (s != null && !s.outgoing && (peerId.isEmpty || s.peer.id == peerId)) {
         await acceptCall();
       }
     };
     OsNotifications.instance.onCallDecline = (peerId) async {
+      final stream = liveStream;
+      if (stream != null &&
+          !stream.outgoing &&
+          stream.phase == LiveStreamPhase.incoming &&
+          (peerId.isEmpty || stream.peer.id == peerId)) {
+        await declineLiveStream();
+        return;
+      }
       final s = call;
       if (s != null && !s.outgoing && (peerId.isEmpty || s.peer.id == peerId)) {
         await declineCall();
@@ -333,6 +354,7 @@ class CommsController extends ChangeNotifier {
   Future<void> _applyAuth(String newToken, User newUser) async {
     _authRetry?.cancel();
     await _finalizeCall();
+    await _finalizeLiveStream();
     channel.disconnect();
     _storeActiveUnread();
     _resetLocalState();
@@ -375,6 +397,7 @@ class CommsController extends ChangeNotifier {
   Future<void> logout() async {
     _authRetry?.cancel();
     await _finalizeCall();
+    await _finalizeLiveStream();
     channel.disconnect();
     _storeActiveUnread();
     _resetLocalState();
@@ -399,6 +422,7 @@ class CommsController extends ChangeNotifier {
     if (account == null) return;
     _authRetry?.cancel();
     await _finalizeCall();
+    await _finalizeLiveStream();
     channel.disconnect();
     _storeActiveUnread();
     _resetLocalState();
@@ -578,6 +602,39 @@ class CommsController extends ChangeNotifier {
         }
         break;
 
+      case 'stream-invite':
+        unawaited(_onStreamInvite(event));
+        break;
+
+      case 'stream-accept':
+        unawaited(_onStreamAccept(event));
+        break;
+
+      case 'stream-end':
+        unawaited(_onStreamEnd(event));
+        break;
+
+      case 'stream-error':
+        unawaited(_onStreamError(event));
+        break;
+
+      case 'stream-signal':
+        final from = event['from'] is Map
+            ? Map<String, dynamic>.from(event['from'])
+            : <String, dynamic>{};
+        if (from['id'] != null) {
+          unawaited(
+            _handleStreamSignal(
+              event['streamId'] as String? ?? '',
+              event['kind'] as String? ?? '',
+              event['payload'] is Map
+                  ? Map<String, dynamic>.from(event['payload'])
+                  : null,
+            ),
+          );
+        }
+        break;
+
       case 'error':
         showSnack(
           event['message'] as String? ??
@@ -669,13 +726,15 @@ class CommsController extends ChangeNotifier {
   Future<void> _maybeWindowsCallToast(
     String peerId,
     String displayName,
-    bool video,
-  ) async {
+    bool video, {
+    String? title,
+  }) async {
     if (await TrayService.instance.isWindowVisible()) return;
     await OsNotifications.instance.showCall(
       peerId: peerId,
       displayName: displayName,
       video: video,
+      title: title,
     );
   }
 
@@ -1305,7 +1364,7 @@ class CommsController extends ChangeNotifier {
   bool _isPolite(String peerId) => (user?.id ?? '').compareTo(peerId) < 0;
 
   Future<bool> startCall(User peer, {required bool video}) async {
-    if (call != null) return false;
+    if (call != null || liveStream != null) return false;
     if (isBlocked(peer.id)) {
       showSnack(
         L.t(
@@ -1465,7 +1524,7 @@ class CommsController extends ChangeNotifier {
 
     switch (kind) {
       case 'call-invite':
-        if (call != null) {
+        if (call != null || liveStream != null) {
           _sendSignal(peer.id, 'call-busy', null);
           return;
         }
@@ -1627,6 +1686,396 @@ class CommsController extends ChangeNotifier {
     if (reason != null) showSnack(reason);
   }
 
+  // ---- live streaming (1 broadcaster -> 1 viewer, TURN-relayed) -----------
+
+  /// Starts a live stream to [peer]. The broadcaster sends camera+mic; the
+  /// viewer only receives. Media is forced through the TURN relay.
+  Future<bool> startLiveStream(User peer) async {
+    if (liveStream != null) return false;
+    if (call != null) {
+      showSnack(
+        L.t(
+          'Finish the current call before going live.',
+          ru: 'Сначала завершите текущий звонок.',
+        ),
+      );
+      return false;
+    }
+    if (isBlocked(peer.id)) {
+      showSnack(
+        L.t(
+          'You blocked ${peer.displayName}. Unblock to stream.',
+          ru: 'Вы заблокировали ${peer.displayName}. Разблокируйте, чтобы транслировать.',
+        ),
+      );
+      return false;
+    }
+    if (!socketConnected) {
+      showSnack(
+        L.t(
+          'Server not connected yet — wait a moment and try again.',
+          ru: 'Сервер ещё не подключён — подождите немного и попробуйте снова.',
+        ),
+      );
+      return false;
+    }
+    // B1 is server-relayed: without TURN the media would go peer-to-peer, so
+    // refuse rather than silently degrade into a direct call.
+    final ice = await AppConfig.fetchIceConfig();
+    if (ice['iceTransportPolicy'] != 'relay') {
+      showSnack(
+        L.t(
+          'Live streaming needs the server TURN relay. Configure it in server settings.',
+          ru: 'Для трансляций нужен TURN-сервер. Настройте его на сервере.',
+        ),
+      );
+      return false;
+    }
+    final ok = await webrtc.startLocal(video: true);
+    if (!ok) {
+      showSnack(
+        L.t(
+          'Could not start the camera (permissions or device missing).',
+          ru: 'Не удалось запустить камеру (нет разрешений или устройства).',
+        ),
+      );
+      return false;
+    }
+    final session = LiveStreamSession(
+      id: _newCallId(),
+      peer: peer,
+      outgoing: true,
+      phase: LiveStreamPhase.inviting,
+    );
+    liveStream = session;
+    notifyListeners();
+    channel.send({
+      'type': 'stream-start',
+      'streamId': session.id,
+      'to': peer.id,
+      'video': true,
+    });
+    // A viewer that never answers must not strand the broadcaster.
+    _streamTimer?.cancel();
+    _streamTimer = Timer(const Duration(seconds: 60), () {
+      final active = liveStream;
+      if (active != null &&
+          active.outgoing &&
+          active.phase == LiveStreamPhase.inviting &&
+          active.id == session.id) {
+        unawaited(
+          endLiveStream(
+            reason: L.t(
+              '${peer.displayName} did not join the live stream',
+              ru: '${peer.displayName} не присоединился(лась) к трансляции',
+            ),
+          ),
+        );
+      }
+    });
+    return true;
+  }
+
+  Future<void> acceptLiveStream() async {
+    _streamTimer?.cancel();
+    NotificationService.hideCall();
+    _hideCallSurfaces();
+    await SoundPlayer.stopAndRelease();
+    final s = liveStream;
+    if (s == null || s.outgoing) return;
+    if (!socketConnected) {
+      showSnack(
+        L.t(
+          'Server not connected yet — the stream invite expired.',
+          ru: 'Сервер ещё не подключён — приглашение к трансляции истекло.',
+        ),
+      );
+      await _finalizeLiveStream();
+      return;
+    }
+    final ice = await AppConfig.fetchIceConfig();
+    if (ice['iceTransportPolicy'] != 'relay') {
+      channel.send({'type': 'stream-decline', 'streamId': s.id});
+      await _finalizeLiveStream(
+        reason: L.t(
+          'Live streaming needs the server TURN relay.',
+          ru: 'Для трансляций нужен TURN-сервер.',
+        ),
+      );
+      return;
+    }
+    s.phase = LiveStreamPhase.connecting;
+    notifyListeners();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => WidgetsBinding.instance.addPostFrameCallback(
+        (_) => LiveStreamScreen.push(),
+      ),
+    );
+    try {
+      // Viewers are receive-only: no camera/mic capture and no local tracks.
+      await webrtc.createPeer(
+        onSignal: (kind, payload) => _sendStreamSignal(s.id, kind, payload),
+        onConnected: () => _markStreamLive(s),
+        onDisconnected: () => _maybeEndStreamSilently(s),
+        polite: _isPolite(s.peer.id),
+        sendLocal: false,
+        relayOnly: true,
+        iceConfig: ice,
+      );
+    } catch (_) {
+      await _finalizeLiveStream();
+      return;
+    }
+    channel.send({'type': 'stream-accept', 'streamId': s.id});
+  }
+
+  Future<void> declineLiveStream() async {
+    NotificationService.hideCall();
+    _hideCallSurfaces();
+    final s = liveStream;
+    if (s == null || s.outgoing) return;
+    channel.send({'type': 'stream-decline', 'streamId': s.id});
+    await _finalizeLiveStream();
+  }
+
+  Future<void> endLiveStream({String? reason}) async {
+    NotificationService.hideCall();
+    _hideCallSurfaces();
+    final s = liveStream;
+    if (s != null) {
+      channel.send({'type': 'stream-end', 'streamId': s.id});
+    }
+    await _finalizeLiveStream(reason: reason);
+  }
+
+  Future<void> _onStreamInvite(Map<String, dynamic> event) async {
+    final from = event['from'] is Map
+        ? Map<String, dynamic>.from(event['from'])
+        : <String, dynamic>{};
+    final id = event['streamId'] as String? ?? '';
+    if (from['id'] == null || id.isEmpty) return;
+    final peer = User(
+      id: from['id'] as String,
+      username: from['username'] as String? ?? '',
+      displayName: from['displayName'] as String? ?? '',
+    );
+    if (call != null || liveStream != null) {
+      channel.send({'type': 'stream-decline', 'streamId': id});
+      return;
+    }
+    liveStream = LiveStreamSession(
+      id: id,
+      peer: peer,
+      outgoing: false,
+      phase: LiveStreamPhase.incoming,
+    );
+    _streamTimer?.cancel();
+    _streamTimer = Timer(const Duration(seconds: 30), () {
+      final active = liveStream;
+      if (active != null &&
+          !active.outgoing &&
+          active.phase == LiveStreamPhase.incoming &&
+          active.id == id) {
+        declineLiveStream();
+      }
+    });
+    final title = L.t('Live stream', ru: 'Прямой эфир');
+    final hiddenInTray =
+        Platform.isWindows && !await TrayService.instance.isWindowVisible();
+    final inAppRing =
+        !hiddenInTray &&
+        !(Platform.isAndroid && OsNotifications.instance.inBackground);
+    NotificationService.showCall(
+      displayName: peer.displayName,
+      video: true,
+      title: title,
+      onAccept: acceptLiveStream,
+      onDecline: declineLiveStream,
+      ring: inAppRing,
+    );
+    if (Platform.isAndroid && OsNotifications.instance.inBackground) {
+      unawaited(
+        OsNotifications.instance.showCall(
+          peerId: peer.id,
+          displayName: peer.displayName,
+          video: true,
+          title: title,
+        ),
+      );
+    } else if (Platform.isWindows && hiddenInTray) {
+      unawaited(
+        _maybeWindowsCallToast(peer.id, peer.displayName, true, title: title),
+      );
+    }
+    notifyListeners();
+  }
+
+  Future<void> _onStreamAccept(Map<String, dynamic> event) async {
+    final id = event['streamId'] as String? ?? '';
+    final s = liveStream;
+    if (s == null || !s.outgoing || s.id != id) return;
+    _streamTimer?.cancel();
+    s.phase = LiveStreamPhase.connecting;
+    notifyListeners();
+    try {
+      await webrtc.createPeer(
+        onSignal: (kind, payload) => _sendStreamSignal(s.id, kind, payload),
+        onConnected: () => _markStreamLive(s),
+        onDisconnected: () => _maybeEndStreamSilently(s),
+        polite: _isPolite(s.peer.id),
+        sendLocal: true,
+        relayOnly: true,
+      );
+    } catch (_) {
+      await _finalizeLiveStream(
+        reason: L.t(
+          'Could not start the live stream.',
+          ru: 'Не удалось начать трансляцию.',
+        ),
+      );
+      return;
+    }
+    final offer = await webrtc.createOffer();
+    if (offer != null) _sendStreamSignal(s.id, 'offer', offer.toMap());
+  }
+
+  Future<void> _handleStreamSignal(
+    String streamId,
+    String kind,
+    Map<String, dynamic>? payload,
+  ) async {
+    final s = liveStream;
+    if (s == null || s.id != streamId) return;
+    switch (kind) {
+      case 'offer':
+        if (s.outgoing) return; // the broadcaster is always the offerer
+        try {
+          await webrtc.createPeer(
+            onSignal: (kind, payload) => _sendStreamSignal(s.id, kind, payload),
+            onConnected: () => _markStreamLive(s),
+            onDisconnected: () => _maybeEndStreamSilently(s),
+            polite: _isPolite(s.peer.id),
+            sendLocal: false,
+            relayOnly: true,
+          );
+          await webrtc.setRemoteOffer(payload ?? <String, dynamic>{});
+          final answer = await webrtc.createAnswer();
+          if (answer != null) _sendStreamSignal(s.id, 'answer', answer.toMap());
+        } catch (_) {
+          await _finalizeLiveStream(
+            reason: L.t(
+              'Could not join the live stream.',
+              ru: 'Не удалось подключиться к трансляции.',
+            ),
+          );
+        }
+        break;
+      case 'answer':
+        if (!s.outgoing) return;
+        await webrtc.setRemoteAnswer(payload ?? <String, dynamic>{});
+        break;
+      case 'ice':
+        await webrtc.addRemoteIce(payload ?? <String, dynamic>{});
+        break;
+    }
+  }
+
+  Future<void> _onStreamEnd(Map<String, dynamic> event) async {
+    final s = liveStream;
+    final id = event['streamId'] as String? ?? '';
+    if (s == null || (id.isNotEmpty && s.id != id)) return;
+    final reason = event['reason'] as String? ?? 'ended';
+    final String message;
+    if (s.outgoing) {
+      message = switch (reason) {
+        'declined' => L.t(
+          '${s.peer.displayName} declined the live stream',
+          ru: '${s.peer.displayName} отклонил(а) трансляцию',
+        ),
+        'timeout' => L.t(
+          '${s.peer.displayName} did not join the live stream',
+          ru: '${s.peer.displayName} не присоединился(лась) к трансляции',
+        ),
+        _ => L.t(
+          '${s.peer.displayName} left the live stream',
+          ru: '${s.peer.displayName} вышел(ла) из трансляции',
+        ),
+      };
+    } else {
+      message = L.t('The live stream ended', ru: 'Трансляция завершилась');
+    }
+    await _finalizeLiveStream(reason: message);
+  }
+
+  Future<void> _onStreamError(Map<String, dynamic> event) async {
+    final s = liveStream;
+    final id = event['streamId'] as String? ?? '';
+    if (s == null || !s.outgoing || (id.isNotEmpty && s.id != id)) return;
+    final message = switch (event['message']) {
+      'busy' => L.t(
+        '${s.peer.displayName} is already in another stream',
+        ru: '${s.peer.displayName} уже в другой трансляции',
+      ),
+      'blocked' => L.t(
+        'You cannot stream to ${s.peer.displayName}',
+        ru: 'Вы не можете транслировать для ${s.peer.displayName}',
+      ),
+      'unavailable' => L.t(
+        '${s.peer.displayName} is unavailable',
+        ru: '${s.peer.displayName} недоступен(на)',
+      ),
+      _ => L.t(
+        'Could not start the live stream.',
+        ru: 'Не удалось начать трансляцию.',
+      ),
+    };
+    await _finalizeLiveStream(reason: message);
+  }
+
+  void _markStreamLive(LiveStreamSession session) {
+    if (!identical(liveStream, session)) return;
+    _streamTimer?.cancel();
+    session.phase = LiveStreamPhase.live;
+    notifyListeners();
+  }
+
+  void _maybeEndStreamSilently(LiveStreamSession session) {
+    if (!identical(liveStream, session)) return;
+    if (session.phase == LiveStreamPhase.live) {
+      unawaited(
+        _finalizeLiveStream(
+          reason: L.t(
+            'The live stream disconnected',
+            ru: 'Трансляция прервалась',
+          ),
+        ),
+      );
+    } else if (session.phase != LiveStreamPhase.incoming) {
+      unawaited(_finalizeLiveStream());
+    }
+  }
+
+  Future<void> _finalizeLiveStream({String? reason}) async {
+    _streamTimer?.cancel();
+    NotificationService.hideCall();
+    _hideCallSurfaces();
+    await SoundPlayer.stopAndRelease();
+    final had = liveStream != null;
+    liveStream = null;
+    await webrtc.stop();
+    if (had) notifyListeners();
+    if (reason != null) showSnack(reason);
+  }
+
+  void _sendStreamSignal(String streamId, String kind, Map? payload) {
+    channel.send({
+      'type': 'stream-signal',
+      'streamId': streamId,
+      'kind': kind,
+      'payload': payload,
+    });
+  }
+
   String _newCallId() {
     final r = Random();
     return '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${r.nextInt(0xFFFFFF).toRadixString(36)}';
@@ -1637,6 +2086,7 @@ class CommsController extends ChangeNotifier {
     _authRetry?.cancel();
     _pingTimer?.cancel();
     _ringTimer?.cancel();
+    _streamTimer?.cancel();
     channel.connected.removeListener(_onSocketConnectedChanged);
     SoundPlayer.stopAndRelease();
     for (final t in _typingTimers.values) {

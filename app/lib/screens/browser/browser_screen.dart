@@ -80,14 +80,15 @@ class _BrowserScreenState extends State<BrowserScreen> {
     }
     try {
       final support = await getApplicationSupportDirectory();
-      final folder =
-          Directory('${support.path}${Platform.pathSeparator}webview2');
+      final folder = Directory(
+        '${support.path}${Platform.pathSeparator}webview2',
+      );
       if (!folder.existsSync()) folder.createSync(recursive: true);
       final env = await WebViewEnvironment.create(
         settings: WebViewEnvironmentSettings(userDataFolder: folder.path),
       );
       if (!mounted) {
-        env.dispose();
+        _disposeEnv(env);
         return;
       }
       setState(() {
@@ -104,8 +105,23 @@ class _BrowserScreenState extends State<BrowserScreen> {
   void dispose() {
     BrowserRequest.request.removeListener(_onBrowserRequest);
     _urlController.dispose();
-    _webEnv?.dispose();
+    final env = _webEnv;
+    _webEnv = null;
+    if (env != null) _disposeEnv(env);
     super.dispose();
+  }
+
+  /// Disposes the WebView2 environment without letting plugin teardown escape.
+  /// On Windows the method channel is already unregistered when the app window
+  /// closes, so `dispose()` throws MissingPluginException from an unawaited
+  /// Future (reported as an unhandled crash). The OS reclaims the environment
+  /// anyway; the only thing that matters is not crashing on exit.
+  void _disposeEnv(WebViewEnvironment env) {
+    try {
+      unawaited(env.dispose().catchError((_) {}));
+    } catch (_) {
+      // Synchronous failure from an already-destroyed channel: ignore.
+    }
   }
 
   void _onBrowserRequest() {
@@ -627,7 +643,7 @@ class _WebviewHost extends StatefulWidget {
   final WebViewEnvironment? webViewEnvironment;
   final VoidCallback onChanged;
   final void Function(InAppWebViewController, DownloadStartRequest)
-      onDownloadStart;
+  onDownloadStart;
 
   const _WebviewHost({
     super.key,
@@ -745,11 +761,7 @@ class _WebViewUnavailable extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.public_off,
-              size: 56,
-              color: theme.colorScheme.primary,
-            ),
+            Icon(Icons.public_off, size: 56, color: theme.colorScheme.primary),
             const SizedBox(height: 16),
             Text(
               L.t(
@@ -764,7 +776,8 @@ class _WebViewUnavailable extends StatelessWidget {
                 'The built-in browser needs the Microsoft Edge WebView2 '
                 'Runtime, which is not installed on this PC. Pages open in '
                 'your system browser instead.',
-                ru: 'Встроенному браузеру нужен компонент Microsoft Edge '
+                ru:
+                    'Встроенному браузеру нужен компонент Microsoft Edge '
                     'WebView2 Runtime, который не установлен на этом ПК. '
                     'Страницы открываются в системном браузере.',
               ),
