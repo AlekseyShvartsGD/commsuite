@@ -2,4 +2,7 @@
 ///  - pubspec.yaml `version:`
 ///  - installer/CommsuiteInstaller.csproj `Version` / `FileVersion`
 ///  - server/update/latest.json `version`
-const String appVersion = '1.0.41';
+///
+/// `test/version_sync_test.dart` fails when this drifts from pubspec.yaml, so
+/// the update prompt can never advertise a version the build already is.
+const String appVersion = '1.0.42';
