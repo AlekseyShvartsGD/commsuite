@@ -1,22 +1,22 @@
 {
     "installer":  "/update/commsuite-setup.exe",
-    "version":  "1.0.41",
+    "version":  "1.0.42",
     "apk":  "/update/commsuite.apk",
-    "apkSize":  96725407,
+    "apkSize":  96823963,
     "mirrors":  {
-                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.41/commsuite-linux-1.0.41.tar.gz",
-                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.41/commsuite-setup.exe",
-                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.41/commsuite.apk"
+                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.42/commsuite-linux-1.0.42.tar.gz",
+                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.42/commsuite-setup.exe",
+                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.0.42/commsuite.apk"
                 },
-    "apkVersion":  "1.0.41",
-    "publishedAt":  1793269655959,
-    "installerSize":  23671296,
-    "linux":  "/update/commsuite-linux-1.0.41.tar.gz",
-    "installerSha256":  "1547e41a0f034b572721b843a6fcbb575ced019f52dec04590e741758a3e6fe1",
-    "linuxSha256":  "6f760383de456006635c59c305640fd4f64a4f318a03f0af929ca162a2e8d3d9",
-    "windowsVersion":  "1.0.41",
-    "notes":  "Multi-account support: keep several Commsuite accounts signed in and switch between them from the avatar in Chats and People. Each account keeps its own unread badges, language, camera and microphone; add or remove accounts without signing out of the rest.",
-    "apkSha256":  "9d5900bcfb414d5995f6d3d85c1de27c6285e1badd8daf10ae699b37b8a646ec",
-    "linuxSize":  21043135,
-    "linuxVersion":  "1.0.41"
+    "apkVersion":  "1.0.42",
+    "publishedAt":  1793524088456,
+    "installerSize":  23686144,
+    "linux":  "/update/commsuite-linux-1.0.42.tar.gz",
+    "installerSha256":  "d1564020f7e8e110ca32ab5a9321aae31191f7da2a3d4d8baf547c6db350e69f",
+    "linuxSha256":  "a04092774cb7d1e244621cf25e127e17cf8f4a2a75703acdfe104811e14546fb",
+    "windowsVersion":  "1.0.42",
+    "notes":  "Live streaming (B1): open a 1:1 chat and tap the broadcast icon to go live for one viewer. Media is relayed through the server TURN relay (never peer-to-peer); the viewer is receive-only, and the broadcaster can mute or turn the camera off mid-stream. Also fixes the Windows crash on app close caused by disposing the WebView2 environment after the plugin channel had already shut down.",
+    "apkSha256":  "cdb205f601b4d2e83f904e280ebe29bf7bf00a3b3f83292a9199b9a814b82245",
+    "linuxSize":  21054134,
+    "linuxVersion":  "1.0.42"
 }
