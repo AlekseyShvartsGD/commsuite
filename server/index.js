@@ -7,6 +7,7 @@ import authRouter, { authMiddleware } from './auth.js';
 import chatRouter from './chat.js';
 import crashRouter from './crash.js';
 import botRouter from './bot_api.js';
+import streamRouter from './streams.js';
 import turnRouter from './turn.js';
 import { attachRealtime, onlineUserIds } from './realtime.js';
 import { publicUser, sweepOrphanAttachments } from './db.js';
@@ -38,6 +39,7 @@ app.use('/api', authRouter);
 app.use('/api', crashRouter);
 app.use('/api/bot', authMiddleware, botRouter);
 app.use('/api', authMiddleware, chatRouter);
+app.use('/api', authMiddleware, streamRouter);
 app.use('/api', authMiddleware, turnRouter);
 
 app.use((err, req, res, next) => {

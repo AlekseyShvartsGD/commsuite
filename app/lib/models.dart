@@ -452,24 +452,158 @@ class CallSession {
   });
 }
 
-enum LiveStreamPhase { inviting, incoming, connecting, live }
+/// The persistent stream profile of an account: what the Stream tab edits and
+/// what a broadcast snapshots when it goes live.
+class StreamChannel {
+  final String title;
+  final String description;
+  final String game;
+  final String visibility; // public | unlisted | contacts
+  final int slowMode; // seconds between viewer messages
 
-/// One broadcaster -> one viewer live stream. The broadcaster sends camera and
-/// mic; the viewer only receives. Media is relayed through the TURN server.
-class LiveStreamSession {
-  final String id;
-  final User peer;
-  final bool outgoing; // true: we broadcast, false: we watch
-  final bool video;
-  LiveStreamPhase phase;
-
-  LiveStreamSession({
-    required this.id,
-    required this.peer,
-    required this.outgoing,
-    this.video = true,
-    this.phase = LiveStreamPhase.inviting,
+  const StreamChannel({
+    this.title = '',
+    this.description = '',
+    this.game = '',
+    this.visibility = 'public',
+    this.slowMode = 0,
   });
+
+  factory StreamChannel.fromJson(Map<String, dynamic> json) => StreamChannel(
+        title: json['title'] as String? ?? '',
+        description: json['description'] as String? ?? '',
+        game: json['game'] as String? ?? '',
+        visibility: json['visibility'] as String? ?? 'public',
+        slowMode: (json['slowMode'] as num?)?.toInt() ?? 0,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'description': description,
+        'game': game,
+        'visibility': visibility,
+        'slowMode': slowMode,
+      };
+}
+
+/// A live (or just-ended) broadcast as seen by the server directory.
+class StreamInfo {
+  final String id;
+  final String title;
+  final String description;
+  final String game;
+  final String visibility;
+  final int slowMode;
+  final int viewerCount;
+  final int maxViewers;
+  final int startedAt;
+  final int? endedAt;
+  final String status;
+  final String? chatId;
+  final User broadcaster;
+  final bool isMine;
+  final bool canManage;
+  final bool isMod;
+  final bool isViewer;
+
+  const StreamInfo({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.game,
+    required this.visibility,
+    required this.slowMode,
+    required this.viewerCount,
+    required this.maxViewers,
+    required this.startedAt,
+    required this.broadcaster,
+    required this.isMine,
+    required this.canManage,
+    required this.isMod,
+    required this.isViewer,
+    this.endedAt,
+    this.status = 'live',
+    this.chatId,
+  });
+
+  factory StreamInfo.fromJson(Map<String, dynamic> json) => StreamInfo(
+        id: json['id'] as String,
+        title: json['title'] as String? ?? '',
+        description: json['description'] as String? ?? '',
+        game: json['game'] as String? ?? '',
+        visibility: json['visibility'] as String? ?? 'public',
+        slowMode: (json['slowMode'] as num?)?.toInt() ?? 0,
+        viewerCount: (json['viewerCount'] as num?)?.toInt() ?? 0,
+        maxViewers: (json['maxViewers'] as num?)?.toInt() ?? 8,
+        startedAt: (json['startedAt'] as num?)?.toInt() ?? 0,
+        endedAt: (json['endedAt'] as num?)?.toInt(),
+        status: json['status'] as String? ?? 'live',
+        chatId: json['chatId'] as String?,
+        broadcaster: User.fromJson(
+          Map<String, dynamic>.from(json['broadcaster'] as Map? ?? const {}),
+        ),
+        isMine: json['isMine'] as bool? ?? false,
+        canManage: json['canManage'] as bool? ?? false,
+        isMod: json['isMod'] as bool? ?? false,
+        isViewer: json['isViewer'] as bool? ?? false,
+      );
+
+  bool get isFull => viewerCount >= maxViewers;
+
+  StreamInfo copyWith({
+    int? viewerCount,
+    String? title,
+    String? description,
+    String? game,
+    String? visibility,
+    int? slowMode,
+    String? status,
+  }) =>
+      StreamInfo(
+        id: id,
+        title: title ?? this.title,
+        description: description ?? this.description,
+        game: game ?? this.game,
+        visibility: visibility ?? this.visibility,
+        slowMode: slowMode ?? this.slowMode,
+        viewerCount: viewerCount ?? this.viewerCount,
+        maxViewers: maxViewers,
+        startedAt: startedAt,
+        endedAt: endedAt,
+        status: status ?? this.status,
+        chatId: chatId,
+        broadcaster: broadcaster,
+        isMine: isMine,
+        canManage: canManage,
+        isMod: isMod,
+        isViewer: isViewer,
+      );
+}
+
+class StreamViewer {
+  final User user;
+  final int joinedAt;
+  final bool online;
+
+  const StreamViewer({
+    required this.user,
+    required this.joinedAt,
+    this.online = false,
+  });
+
+  factory StreamViewer.fromJson(Map<String, dynamic> json) => StreamViewer(
+        user: User.fromJson(json),
+        joinedAt: (json['joinedAt'] as num?)?.toInt() ?? 0,
+        online: json['online'] as bool? ?? false,
+      );
+}
+
+/// Result of going live or joining: the session plus its dedicated chat id.
+class StreamLaunch {
+  final StreamInfo stream;
+  final String chatId;
+
+  const StreamLaunch({required this.stream, required this.chatId});
 }
 
 class ActiveGame {

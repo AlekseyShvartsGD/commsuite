@@ -4,7 +4,7 @@ Self-hosted chat suite for **Android and Windows** (Flutter) with a custom Node.
 
 - 1:1 messaging (text + attachments) with typing indicators and read receipts
 - Voice and video calls over WebRTC (Google STUN out of the box; server-issued TURN relay for TCP-only / correlated-NAT networks like CloudPub tunnels)
-- Live streaming: 1 broadcaster → 1 viewer, forced through the server TURN relay (no peer-to-peer media)
+- Live streaming: a Twitch-like Stream tab with multi-viewer broadcasts (up to 8), forced through the server TURN relay (no peer-to-peer media)
 - Local file manager (browse, search, rename, delete, copy/cut/paste, new folder, properties)
 - Web browser (tabbed InAppWebView with bookmarks)
 - Presence (online/offline) and a persistent accounts database
@@ -27,7 +27,7 @@ npm start      # listens on 0.0.0.0:3000
 
 - HTTP API on port `3000` (`/api/...`), WebSocket signaling on `/ws?token=<jwt>`.
 - Data is stored in `server/data/` (SQLite DB `app.db`, uploads, JWT secret). This folder is git-ignored and created on first start.
-- Smoke test (starts the server on port 3457 and runs 30 assertions):
+- Smoke test (starts the server on port 3457 against a throwaway data directory and runs 61 assertions):
 
 ```bash
 npm run smoke
@@ -41,7 +41,8 @@ npm run smoke
 - `GET /api/conversations` · `GET /api/conversations/:id/messages?limit=&before=`
 - `POST /api/conversations/:id/messages` (`kind: text|file`)
 - `POST /api/attachments` (multipart) · `GET /api/attachments/:id` (streamed, same-auth)
-- WebSocket events: client `ping|typing|read|signal|stream-start|stream-accept|stream-decline|stream-end|stream-signal`; server pushes `hello|presence|message|typing|read|signal|stream-*|error`
+- Streams: `GET /api/streams` (directory) · `GET /api/streams/mine` · `PATCH /api/streams/channel` · `GET /api/streams/games` · `POST /api/streams` (go live) · `POST /api/streams/:id/join|leave|end` · `GET /api/streams/:id` / `viewers` / `bans` / `mods` · `POST /api/streams/:id/kick|ban|mods` · `DELETE /api/streams/:id/ban/:userId` / `mods/:userId`
+- WebSocket events: client `ping|typing|read|signal|stream-signal`; server pushes `hello|presence|message|typing|read|signal|stream-viewer-joined|stream-viewer-left|stream-ended|stream-kicked|stream-updated|stream-modded|stream-unmodded|stream-signal|error`
 
 ## App (Flutter)
 
@@ -67,6 +68,7 @@ flutter run -d <android-device>   # phone/emulator
 | People | Directory search, start chat / voice / video call |
 | Files | Local storage browser (Android `/storage/emulated/0`, Windows drive roots), full file operations |
 | Browse | Tabbed web browser, URL bar, reload/back/forward, persisted bookmarks |
+| Stream | Live directory, channel profile (title/description/game), broadcast room with chat and moderation |
 | Settings | Your profile, connection status, server URL (live reconnect), sign out |
 
 ### Notes / platform specifics
@@ -80,32 +82,48 @@ flutter run -d <android-device>   # phone/emulator
 - Calls rely on the server-issued TURN credentials (`GET /api/turn`); when the
   server has no TURN configured the app falls back to Google STUN.
 
-### Live streaming (B1)
+### Live streaming
 
-Milestone 1 is **1 broadcaster → 1 viewer** with the media relayed by the
-server (Cloudflare Realtime TURN, credentials from `GET /api/turn`). Live
-streams always set `iceTransportPolicy: 'relay'`, so neither video nor audio
-travels directly between the two devices. Without a configured TURN relay the
-app refuses to start a stream instead of silently degrading to P2P.
+The **Stream** tab is a Twitch-like channel and directory:
 
-Protocol (WebSocket, token-authenticated like everything else):
+- **My channel** — title, description, game (free text with autocomplete from
+  games you have used before), visibility (`public`, `unlisted`, `contacts`) and
+  slow mode. Settings are saved on the server and reused the next time you go
+  live.
+- **Live now** — every public broadcast. Unlisted streams are reachable by id,
+  `contacts` streams only by people who share a DM or group conversation with
+  the broadcaster. A broadcast holds **up to 8 viewers**; the ninth join is
+  rejected with `409 stream is full`.
+- **Broadcast room** — the broadcaster sees their own preview plus mic, camera,
+  camera-switch, quality (480p/720p hot-swap) and end controls. Viewers see the
+  relayed video and can leave at any time.
+- **Stream chat** — a dedicated per-stream conversation is created when the
+  broadcaster goes live, viewers join and leave with the stream, and it is
+  archived to the broadcaster when the stream ends.
+- **Moderation** — kick or ban viewers (bans persist on the channel), appoint
+  moderators, and set slow mode to 0/3/10/30 seconds. Moderators can delete
+  messages, kick and ban.
+
+Media is relayed by the server TURN relay (Cloudflare Realtime TURN,
+credentials from `GET /api/turn`). Every peer connection sets
+`iceTransportPolicy: 'relay'`, so neither video nor audio travels directly
+between devices. Without a configured TURN relay the app refuses to start or
+join a stream instead of silently degrading to P2P.
+
+Sessions are stored in SQLite (`stream_sessions`, `stream_viewers`), so a
+broadcaster who drops their socket is cleaned up and the directory does not keep
+zombie streams. Signalling is a single authenticated WebSocket message:
 
 | Client → server | Server → client | Purpose |
 |---|---|---|
-| `stream-start` `{streamId, to, video}` | `stream-invite` `{streamId, from, video}` | broadcaster invites one viewer |
-| `stream-accept` `{streamId}` | `stream-accept` `{streamId, viewer}` | viewer joins; broadcaster creates the offer |
-| `stream-decline` `{streamId}` | `stream-decline` (via `stream-end`) | viewer refuses |
-| `stream-end` `{streamId}` | `stream-end` `{streamId, reason}` | either side ends / disconnects |
-| `stream-signal` `{streamId, kind, payload}` | `stream-signal` `{streamId, from, kind, payload}` | SDP offer/answer + ICE relay |
+| `ping` / `typing` / `read` | `hello` / `presence` / `message` / `typing` / `read` | normal chat traffic |
+| `stream-signal` `{streamId, to, kind, payload}` | `stream-signal` `{streamId, from, kind, payload}` | SDP offer/answer + ICE relay |
+| — | `stream-viewer-joined` / `stream-viewer-left` | broadcaster updates the viewer list |
+| — | `stream-ended` / `stream-kicked` | viewer is disconnected or the room closes |
+| — | `stream-updated` / `stream-modded` / `stream-unmodded` | live metadata and moderator changes |
 
-The server keeps an in-memory registry per stream: one stream per account,
-block checks before the invite, busy errors, 2-minute expiry for unanswered
-invites, and cleanup when a participant's last WebSocket closes. The viewer is
-receive-only (no camera/mic capture); the broadcaster can mute or disable the
-camera mid-stream.
-
-Open a 1:1 chat and tap the broadcast icon to go live; the other account gets
-an in-app accept/decline banner (or an OS notification while backgrounded).
+Demo and smoke-test accounts are hidden from the people directory
+(`users.hidden = 1`) but keep their message history.
 
 ### Calls on UDP-blocked networks (TURN relay)
 

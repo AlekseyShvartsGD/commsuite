@@ -8,10 +8,9 @@ import { verifyToken, resolveToken } from './auth.js';
 
 const clients = new Map();
 
-// Live-stream sessions relayed by this server: one broadcaster -> one viewer.
-// Media itself flows through the TURN relay; this registry only owns the
-// signalling lifecycle (invite/accept/end), busy checks and crash cleanup.
-const streams = new Map();
+// Live broadcasts are persisted in stream_sessions/stream_viewers; signalling
+// needs no in-memory registry, so a server restart cannot strand a peer
+// connection pointing at a stream that no longer exists.
 
 export function notifyUser(userId, payload) {
   const sockets = clients.get(userId);
@@ -107,10 +106,18 @@ export function attachRealtime(server) {
         broadcast({ type: 'presence', userId, online: false }, userId);
         // A broadcaster/viewer that vanished (killed app, lost tunnel) must not
         // leave the other side waiting on a dead peer connection.
-        for (const stream of [...streams.values()]) {
-          if (stream.broadcasterId === userId || stream.viewerId === userId) {
-            endStream(stream, { from: userId, reason: 'disconnected' });
-          }
+        const live = db
+          .prepare("SELECT id FROM stream_sessions WHERE broadcaster_id = ? AND status = 'live'")
+          .get(userId);
+        if (live) endBroadcast(live.id, 'broadcaster-offline');
+        for (const row of db
+          .prepare(
+            `SELECT v.stream_id FROM stream_viewers v
+               JOIN stream_sessions s ON s.id = v.stream_id
+              WHERE v.user_id = ? AND s.status = 'live'`
+          )
+          .all(userId)) {
+          dropViewer(row.stream_id, userId, 'disconnected');
         }
       }
     });
@@ -130,32 +137,66 @@ export function attachRealtime(server) {
     }
   }
 
-  function streamOf(userId) {
-    for (const stream of streams.values()) {
-      if (stream.broadcasterId === userId || stream.viewerId === userId) return stream;
+  /// Ends a broadcast because its broadcaster went away, not because they
+  /// pressed "end". Keeps the DB (and every viewer's UI) consistent.
+  function endBroadcast(streamId, reason) {
+    const session = db
+      .prepare("SELECT * FROM stream_sessions WHERE id = ? AND status = 'live'")
+      .get(streamId);
+    if (!session) return;
+    db.prepare("UPDATE stream_sessions SET status = 'ended', ended_at = ? WHERE id = ?").run(
+      Date.now(),
+      session.id
+    );
+    for (const row of db
+      .prepare('SELECT user_id FROM stream_viewers WHERE stream_id = ?')
+      .all(session.id)) {
+      notifyUser(row.user_id, { type: 'stream-ended', streamId: session.id, reason });
+      leaveChat(session.chat_id, row.user_id);
     }
-    return null;
+    db.prepare('DELETE FROM stream_viewers WHERE stream_id = ?').run(session.id);
+    for (const mod of db
+      .prepare('SELECT user_id FROM stream_mods WHERE broadcaster_id = ?')
+      .all(session.broadcaster_id)) {
+      leaveChat(session.chat_id, mod.user_id);
+    }
   }
 
-  function otherParticipant(stream, userId) {
-    return stream.broadcasterId === userId ? stream.viewerId : stream.broadcasterId;
+  function leaveChat(chatId, userId) {
+    if (!chatId) return;
+    db.prepare('DELETE FROM group_members WHERE conversation_id = ? AND user_id = ?').run(
+      chatId,
+      userId
+    );
+    notifyUser(userId, { type: 'group-removed', conversationId: chatId });
   }
 
-  function endStream(stream, reason) {
-    streams.delete(stream.id);
-    const other = reason?.from
-      ? otherParticipant(stream, reason.from)
-      : stream.broadcasterId;
-    notifyUser(other, {
-      type: 'stream-end',
-      streamId: stream.id,
-      reason: reason?.reason ?? 'ended',
-      from: reason?.from ?? null,
+  /// Drops a viewer whose socket died and tells the broadcaster to tear down
+  /// that one peer connection (the other viewers keep watching).
+  function dropViewer(streamId, userId, reason) {
+    const session = db.prepare('SELECT * FROM stream_sessions WHERE id = ?').get(streamId);
+    if (!session) return;
+    db.prepare('DELETE FROM stream_viewers WHERE stream_id = ? AND user_id = ?').run(
+      streamId,
+      userId
+    );
+    leaveChat(session.chat_id, userId);
+    const viewerCount = db
+      .prepare('SELECT COUNT(*) AS n FROM stream_viewers WHERE stream_id = ?')
+      .get(streamId).n;
+    notifyUser(session.broadcaster_id, {
+      type: 'stream-viewer-left',
+      streamId,
+      userId,
+      viewerCount,
+      reason,
     });
   }
 
-  function streamError(ws, streamId, message) {
-    ws.send(JSON.stringify({ type: 'stream-error', streamId, message }));
+  function isStreamViewer(streamId, userId) {
+    return !!db
+      .prepare('SELECT 1 FROM stream_viewers WHERE stream_id = ? AND user_id = ?')
+      .get(streamId, userId);
   }
 
   function handleMessage(ws, msg) {
@@ -248,75 +289,25 @@ export function attachRealtime(server) {
         break;
       }
 
-      case 'stream-start': {
-        const streamId = String(msg.streamId || '').slice(0, 64);
-        const to = String(msg.to || '');
-        if (!streamId || !to || to === from.id || streams.has(streamId)) return;
-        if (isBlockedAny(from.id, to)) {
-          streamError(ws, streamId, 'blocked');
-          return;
-        }
-        const target = db.prepare('SELECT id, role FROM users WHERE id = ?').get(to);
-        if (!target || target.role === 'banned') {
-          streamError(ws, streamId, 'unavailable');
-          return;
-        }
-        if (streamOf(from.id) || streamOf(to)) {
-          streamError(ws, streamId, 'busy');
-          return;
-        }
-        const stream = {
-          id: streamId,
-          broadcasterId: from.id,
-          viewerId: to,
-          phase: 'invited',
-          createdAt: Date.now(),
-        };
-        streams.set(streamId, stream);
-        notifyUser(to, {
-          type: 'stream-invite',
-          streamId,
-          from,
-          video: msg.video !== false,
-        });
-        ws.send(JSON.stringify({ type: 'stream-ringing', streamId }));
-        break;
-      }
-
-      case 'stream-accept': {
-        const stream = streams.get(String(msg.streamId || ''));
-        if (!stream || stream.viewerId !== from.id) return;
-        stream.phase = 'live';
-        notifyUser(stream.broadcasterId, {
-          type: 'stream-accept',
-          streamId: stream.id,
-          viewer: from,
-        });
-        break;
-      }
-
-      case 'stream-decline': {
-        const stream = streams.get(String(msg.streamId || ''));
-        if (!stream || stream.viewerId !== from.id) return;
-        endStream(stream, { from: from.id, reason: 'declined' });
-        break;
-      }
-
-      case 'stream-end': {
-        const stream = streams.get(String(msg.streamId || ''));
-        if (!stream) return;
-        if (stream.broadcasterId !== from.id && stream.viewerId !== from.id) return;
-        endStream(stream, { from: from.id, reason: String(msg.reason || 'ended') });
-        break;
-      }
-
       case 'stream-signal': {
-        const stream = streams.get(String(msg.streamId || ''));
-        if (!stream) return;
-        if (stream.broadcasterId !== from.id && stream.viewerId !== from.id) return;
-        notifyUser(otherParticipant(stream, from.id), {
+        // SDP/ICE for one broadcaster↔viewer pair. The REST layer already
+        // enforced visibility, capacity and bans; here we only prove the two
+        // endpoints really are the broadcaster and one of its viewers.
+        const streamId = String(msg.streamId || '');
+        const to = String(msg.to || '');
+        if (!streamId || !to || to === from.id) return;
+        const session = db
+          .prepare("SELECT * FROM stream_sessions WHERE id = ? AND status = 'live'")
+          .get(streamId);
+        if (!session) return;
+        const fromIsBroadcaster = session.broadcaster_id === from.id;
+        const fromIsViewer = isStreamViewer(streamId, from.id);
+        const toIsBroadcaster = session.broadcaster_id === to;
+        const toIsViewer = isStreamViewer(streamId, to);
+        if (!((fromIsBroadcaster && toIsViewer) || (fromIsViewer && toIsBroadcaster))) return;
+        notifyUser(to, {
           type: 'stream-signal',
-          streamId: stream.id,
+          streamId,
           from,
           kind: String(msg.kind || ''),
           payload: msg.payload ?? null,
@@ -345,12 +336,12 @@ export function attachRealtime(server) {
         }
       }
     }
-    // Invites that were never answered (viewer went offline without closing)
-    // expire instead of blocking both accounts forever.
-    for (const stream of [...streams.values()]) {
-      if (stream.phase === 'invited' && Date.now() - stream.createdAt > 120000) {
-        endStream(stream, { reason: 'timeout' });
-      }
+    // A broadcast whose broadcaster has no socket left (tunnel dropped without
+    // a close frame) stops being listed as live.
+    for (const row of db
+      .prepare("SELECT id, broadcaster_id FROM stream_sessions WHERE status = 'live'")
+      .all()) {
+      if (!clients.has(row.broadcaster_id)) endBroadcast(row.id, 'broadcaster-offline');
     }
   }, 30000);
   heartbeat.unref();

@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -36,9 +38,12 @@ async function api(path, opts = {}, token) {
 }
 
 const serverDir = path.dirname(fileURLToPath(new URL('.', import.meta.url)));
+// Never write test accounts into the live database: the suite runs against a
+// throwaway data directory that is deleted when it finishes.
+const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commsuite-smoke-'));
 const server = spawn(process.execPath, ['index.js'], {
   cwd: serverDir,
-  env: { ...process.env, PORT: String(PORT) },
+  env: { ...process.env, PORT: String(PORT), COMMSUITE_DATA_DIR: testDataDir },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 
@@ -192,55 +197,264 @@ try {
   const sig = eventsA.find((e) => e.type === 'signal');
   check('signal relayed', sig?.kind === 'call-invite' && sig?.from?.id === userB.id);
 
-  const streamId = `s_${suffix}`;
-  wsA.send(JSON.stringify({ type: 'stream-start', streamId, to: userB.id, video: true }));
-  await sleep(200);
-  const invite = eventsB.find((e) => e.type === 'stream-invite');
+  // ---- live streaming: channel, directory, 8 viewers, chat, moderation -----
+  console.log('streaming');
+  const mine0 = await api('/api/streams/mine', {}, tokenA);
+  check('stream channel starts empty', mine0.status === 200 && mine0.json.live === null);
+
+  const saved = await api('/api/streams/channel', {
+    method: 'PATCH',
+    body: {
+      title: 'Speedrun night',
+      description: 'Any% attempts',
+      game: 'Celeste',
+      visibility: 'public',
+      slowMode: 0,
+    },
+  }, tokenA);
   check(
-    'stream invite relayed',
-    invite?.streamId === streamId && invite?.from?.id === userA.id,
+    'channel profile saved',
+    saved.status === 200 &&
+      saved.json.channel.title === 'Speedrun night' &&
+      saved.json.channel.game === 'Celeste',
   );
 
-  wsB.send(JSON.stringify({ type: 'stream-accept', streamId }));
-  await sleep(200);
-  const accepted = eventsA.find((e) => e.type === 'stream-accept');
+  const goLive = await api('/api/streams', { method: 'POST' }, tokenA);
+  const streamId = goLive.json?.stream?.id;
+  const streamChat = goLive.json?.chatId;
+  check('go live creates a session and chat', goLive.status === 201 && !!streamId && !!streamChat);
+  check('broadcaster sees own live session', goLive.json?.stream?.isMine === true);
+
+  const relive = await api('/api/streams', { method: 'POST' }, tokenA);
+  check('cannot start two streams at once', relive.status === 409);
+
+  const dirB = await api('/api/streams', {}, tokenB);
   check(
-    'stream accept relayed',
-    accepted?.streamId === streamId && accepted?.viewer?.id === userB.id,
+    'public stream listed in directory',
+    dirB.json.streams.some((s) => s.id === streamId && s.broadcaster.id === userA.id),
+  );
+
+  const games = await api('/api/streams/games', {}, tokenB);
+  check('game autocomplete lists the live game', games.json.games.includes('Celeste'));
+
+  const joinB = await api(`/api/streams/${streamId}/join`, { method: 'POST' }, tokenB);
+  check('viewer joins', joinB.status === 200 && joinB.json.chatId === streamChat);
+  await sleep(200);
+  const joinedEvent = eventsA.find(
+    (e) => e.type === 'stream-viewer-joined' && e.streamId === streamId,
+  );
+  check(
+    'broadcaster told a viewer joined',
+    joinedEvent?.viewer?.id === userB.id && joinedEvent?.viewerCount === 1,
+  );
+
+  wsB.send(JSON.stringify({
+    type: 'stream-signal',
+    streamId,
+    to: userA.id,
+    kind: 'offer',
+    payload: { sdp: 'v=0', type: 'offer' },
+  }));
+  await sleep(200);
+  const offer = eventsA.find((e) => e.type === 'stream-signal' && e.kind === 'offer');
+  check(
+    'viewer offer relayed to broadcaster',
+    offer?.streamId === streamId && offer?.payload?.sdp === 'v=0',
   );
 
   wsA.send(JSON.stringify({
     type: 'stream-signal',
     streamId,
-    kind: 'offer',
-    payload: { sdp: 'v=0', type: 'offer' },
+    to: userB.id,
+    kind: 'answer',
+    payload: { sdp: 'v=0', type: 'answer' },
   }));
   await sleep(200);
-  const offer = eventsB.find((e) => e.type === 'stream-signal' && e.kind === 'offer');
+  const answer = eventsB.find((e) => e.type === 'stream-signal' && e.kind === 'answer');
+  check('broadcaster answer relayed to viewer', answer?.streamId === streamId);
+
+  // A third party must not be able to inject signalling into someone's stream.
+  const outsider = await api('/api/register', {
+    method: 'POST',
+    body: { username: `eve${suffix}`, password: 'secret3', displayName: 'Eve' },
+  });
+  const eveToken = outsider.json.token;
+  const wsEve = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${eveToken}`);
+  const eventsEve = [];
+  wsEve.on('message', (d) => eventsEve.push(JSON.parse(d)));
+  await new Promise((resolve, reject) => {
+    wsEve.on('open', resolve);
+    wsEve.on('error', reject);
+  });
+  wsEve.send(JSON.stringify({
+    type: 'stream-signal',
+    streamId,
+    to: userB.id,
+    kind: 'offer',
+    payload: { sdp: 'v=9', type: 'offer' },
+  }));
+  await sleep(200);
   check(
-    'stream offer relayed',
-    offer?.streamId === streamId && offer?.payload?.sdp === 'v=0',
+    'outsider cannot signal into a stream',
+    !eventsB.some((e) => e.type === 'stream-signal' && e.payload?.sdp === 'v=9'),
   );
 
-  const busyStreamId = `${streamId}_busy`;
-  wsA.send(JSON.stringify({ type: 'stream-start', streamId: busyStreamId, to: userB.id }));
-  await sleep(200);
-  const busy = eventsA.find(
-    (e) => e.type === 'stream-error' && e.streamId === busyStreamId,
+  // Fill the audience: 8 viewers including B, the 9th is refused.
+  const extraViewers = [];
+  for (let i = 0; i < 7; i++) {
+    const reg = await api('/api/register', {
+      method: 'POST',
+      body: {
+        username: `viewer${i}${suffix}`,
+        password: 'secret4',
+        displayName: `Viewer ${i}`,
+      },
+    });
+    extraViewers.push(reg.json.token);
+  }
+  let capacityOk = true;
+  for (const token of extraViewers) {
+    const r = await api(`/api/streams/${streamId}/join`, { method: 'POST' }, token);
+    if (r.status !== 200) capacityOk = false;
+  }
+  check('seven more viewers fit the audience', capacityOk);
+  const ninth = await api(`/api/streams/${streamId}/join`, { method: 'POST' }, eveToken);
+  check(
+    'ninth viewer is refused',
+    ninth.status === 409 && ninth.json.error === 'stream is full',
   );
-  check('second concurrent stream rejected', busy?.message === 'busy');
 
-  wsB.send(JSON.stringify({ type: 'stream-end', streamId }));
-  await sleep(200);
-  const ended = eventsA.find((e) => e.type === 'stream-end' && e.streamId === streamId);
-  check('stream end relayed', !!ended);
+  // Stream chat: messages, then slow mode enforced for viewers but not mods.
+  const chatMsg = await api(`/api/conversations/${streamChat}/messages`, {
+    method: 'POST',
+    body: { kind: 'text', body: 'first!' },
+  }, tokenB);
+  check('viewer can post in stream chat', chatMsg.status === 201);
 
-  const restartedId = `${streamId}_restarted`;
-  wsA.send(JSON.stringify({ type: 'stream-start', streamId: restartedId, to: userB.id }));
+  const slow = await api('/api/streams/channel', { method: 'PATCH', body: { slowMode: 3 } }, tokenA);
+  check('slow mode saved', slow.status === 200 && slow.json.channel.slowMode === 3);
+  const tooFast = await api(`/api/conversations/${streamChat}/messages`, {
+    method: 'POST',
+    body: { kind: 'text', body: 'second' },
+  }, tokenB);
+  check(
+    'slow mode throttles viewers',
+    tooFast.status === 429 &&
+      tooFast.json.error === 'slow mode' &&
+      tooFast.json.retryAfterMs > 0,
+  );
+
+  // Moderators are appointed by the broadcaster and may delete chat messages.
+  const appoint = await api(
+    `/api/streams/${streamId}/mods`,
+    { method: 'POST', body: { userId: userB.id } },
+    tokenA,
+  );
+  check('broadcaster appoints a moderator', appoint.status === 200);
   await sleep(200);
-  const invites = eventsB.filter((e) => e.type === 'stream-invite');
-  check('stream can restart after end', invites.length === 2);
-  wsA.send(JSON.stringify({ type: 'stream-end', streamId: restartedId }));
+  check(
+    'moderator notified',
+    eventsB.some((e) => e.type === 'stream-modded' && e.broadcasterId === userA.id),
+  );
+  const modPost = await api(`/api/conversations/${streamChat}/messages`, {
+    method: 'POST',
+    body: { kind: 'text', body: 'mods ignore slow mode' },
+  }, tokenB);
+  check('moderator bypasses slow mode', modPost.status === 201);
+
+  // Kick then ban: kicked viewers can rejoin, banned ones cannot.
+  const kick = await api(
+    `/api/streams/${streamId}/kick`,
+    { method: 'POST', body: { userId: userB.id } },
+    tokenA,
+  );
+  check('broadcaster kicks a viewer', kick.status === 200 && kick.json.ok === true);
+  await sleep(200);
+  check(
+    'kicked viewer notified',
+    eventsB.some((e) => e.type === 'stream-kicked' && e.streamId === streamId),
+  );
+  check(
+    'viewer count drops after kick',
+    eventsA.some(
+      (e) => e.type === 'stream-viewer-left' && e.userId === userB.id && e.viewerCount === 7,
+    ),
+  );
+
+  const rejoin = await api(`/api/streams/${streamId}/join`, { method: 'POST' }, tokenB);
+  check('kicked viewer may rejoin', rejoin.status === 200);
+
+  const ban = await api(
+    `/api/streams/${streamId}/ban`,
+    { method: 'POST', body: { userId: userB.id } },
+    tokenA,
+  );
+  check('broadcaster bans a viewer', ban.status === 200);
+  await sleep(200);
+  check(
+    'banned viewer notified',
+    eventsB.some((e) => e.type === 'stream-kicked' && e.reason === 'banned'),
+  );
+  const bannedRejoin = await api(`/api/streams/${streamId}/join`, { method: 'POST' }, tokenB);
+  check(
+    'banned viewer cannot rejoin',
+    bannedRejoin.status === 403 && bannedRejoin.json.error.includes('banned'),
+  );
+  const unban = await api(`/api/streams/${streamId}/ban/${userB.id}`, { method: 'DELETE' }, tokenA);
+  check('broadcaster unbans', unban.status === 200);
+
+  const viewers = await api(`/api/streams/${streamId}/viewers`, {}, tokenA);
+  check(
+    'broadcaster lists live viewers',
+    viewers.status === 200 &&
+      viewers.json.viewers.length === 7 &&
+      viewers.json.maxViewers === 8,
+  );
+  const viewerListForViewer = await api(`/api/streams/${streamId}/viewers`, {}, eveToken);
+  check('non-moderators cannot list the audience', viewerListForViewer.status === 403);
+
+  // Put B back in the audience so the end-of-stream event has a real recipient.
+  const rejoinBeforeEnd = await api(`/api/streams/${streamId}/join`, { method: 'POST' }, tokenB);
+  check('unbanned viewer can rejoin before the end', rejoinBeforeEnd.status === 200);
+
+  // Ending the broadcast clears the directory and the chat memberships.
+  const end = await api(`/api/streams/${streamId}/end`, { method: 'POST' }, tokenA);
+  check('broadcaster ends the stream', end.status === 200);
+  await sleep(200);
+  check(
+    'viewers told the stream ended',
+    eventsB.some((e) => e.type === 'stream-ended' && e.streamId === streamId),
+  );
+  const dirAfter = await api('/api/streams', {}, tokenB);
+  check('ended stream leaves the directory', !dirAfter.json.streams.some((s) => s.id === streamId));
+  const joinEnded = await api(`/api/streams/${streamId}/join`, { method: 'POST' }, tokenB);
+  check('cannot join an ended stream', joinEnded.status === 410);
+
+  // A broadcaster whose socket dies must not leave a zombie "live" entry.
+  const zoe = await api('/api/register', {
+    method: 'POST',
+    body: { username: `zoe${suffix}`, password: 'secret5', displayName: 'Zoe' },
+  });
+  const wsZoe = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${zoe.json.token}`);
+  await new Promise((resolve, reject) => {
+    wsZoe.on('open', resolve);
+    wsZoe.on('error', reject);
+  });
+  const liveZoe = await api('/api/streams', {
+    method: 'POST',
+    body: { title: 'Zoe live' },
+  }, zoe.json.token);
+  const streamZoe = liveZoe.json?.stream?.id;
+  const dirZoe = await api('/api/streams', {}, tokenA);
+  check('second broadcaster appears in the directory', dirZoe.json.streams.some((s) => s.id === streamZoe));
+  wsZoe.close();
+  await sleep(600);
+  const dirAfterDrop = await api('/api/streams', {}, tokenA);
+  check(
+    'broadcaster disconnect ends the stream',
+    !dirAfterDrop.json.streams.some((s) => s.id === streamZoe),
+  );
+  wsEve.close();
 
   wsA.send(JSON.stringify({ type: 'typing', conversationId: convId }));
   await sleep(200);
@@ -263,6 +477,9 @@ try {
   console.error('  FAIL unexpected error:', err);
 } finally {
   server.kill();
+  try {
+    fs.rmSync(testDataDir, { recursive: true, force: true });
+  } catch {}
 }
 
 await sleep(200);

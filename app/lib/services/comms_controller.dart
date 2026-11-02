@@ -10,7 +10,7 @@ import '../core/app_config.dart';
 import '../core/realtime.dart';
 import '../models.dart';
 import '../screens/call/call_screen.dart';
-import '../screens/stream/live_stream_screen.dart';
+import 'broadcast_service.dart';
 import 'notification_service.dart';
 import 'os_notifications.dart';
 import 'server_discovery.dart';
@@ -46,14 +46,39 @@ class CommsController extends ChangeNotifier {
 
   String? _activeConversation;
   CallSession? call;
-  LiveStreamSession? liveStream;
+
+  // ---- live streaming -----------------------------------------------------
+  /// Multi-peer media for the broadcast we host or watch. Signalling travels
+  /// over the websocket; media is forced through the TURN relay.
+  final BroadcastService broadcast = BroadcastService();
+
+  /// The saved channel profile on the Stream tab.
+  StreamChannel? streamChannel;
+  List<StreamInfo> streamDirectory = [];
+  List<String> streamGames = [];
+
+  /// Our own live broadcast, as the broadcaster sees it.
+  StreamInfo? myStream;
+
+  /// The broadcast we are watching, as a viewer.
+  StreamInfo? watching;
+
+  List<StreamViewer> streamViewers = [];
+  List<User> streamMods = [];
+  List<User> streamBans = [];
+
+  /// Conversation id of the broadcast we host or watch (the dedicated chat).
+  String? streamChatId;
+  bool streamLoading = false;
+
+  bool get streaming => myStream != null || watching != null;
+
   StreamSubscription? _sub;
   final Map<String, Timer> _typingTimers = {};
 
   Timer? _pingTimer;
   Timer? _authRetry;
   Timer? _ringTimer;
-  Timer? _streamTimer;
   final GlobalKey<ScaffoldMessengerState> messengerKey =
       GlobalKey<ScaffoldMessengerState>();
 
@@ -98,7 +123,7 @@ class CommsController extends ChangeNotifier {
   void startFreshSession() {
     _authRetry?.cancel();
     unawaited(_finalizeCall());
-    unawaited(_finalizeLiveStream());
+    unawaited(_teardownStream());
     channel.disconnect();
     _resetLocalState();
     token = null;
@@ -218,6 +243,7 @@ class CommsController extends ChangeNotifier {
   Future<void> bootstrap() async {
     await AppConfig.init();
     _sub ??= channel.events.listen(_onEvent);
+    _bindBroadcast();
     channel.connected.addListener(_onSocketConnectedChanged);
     unawaited(_initOsNotifications());
     final savedToken = await AppConfig.loadToken();
@@ -236,28 +262,12 @@ class CommsController extends ChangeNotifier {
 
   Future<void> _initOsNotifications() async {
     OsNotifications.instance.onCallAnswer = (peerId) async {
-      final stream = liveStream;
-      if (stream != null &&
-          !stream.outgoing &&
-          stream.phase == LiveStreamPhase.incoming &&
-          (peerId.isEmpty || stream.peer.id == peerId)) {
-        await acceptLiveStream();
-        return;
-      }
       final s = call;
       if (s != null && !s.outgoing && (peerId.isEmpty || s.peer.id == peerId)) {
         await acceptCall();
       }
     };
     OsNotifications.instance.onCallDecline = (peerId) async {
-      final stream = liveStream;
-      if (stream != null &&
-          !stream.outgoing &&
-          stream.phase == LiveStreamPhase.incoming &&
-          (peerId.isEmpty || stream.peer.id == peerId)) {
-        await declineLiveStream();
-        return;
-      }
       final s = call;
       if (s != null && !s.outgoing && (peerId.isEmpty || s.peer.id == peerId)) {
         await declineCall();
@@ -354,7 +364,7 @@ class CommsController extends ChangeNotifier {
   Future<void> _applyAuth(String newToken, User newUser) async {
     _authRetry?.cancel();
     await _finalizeCall();
-    await _finalizeLiveStream();
+    await _teardownStream();
     channel.disconnect();
     _storeActiveUnread();
     _resetLocalState();
@@ -397,7 +407,7 @@ class CommsController extends ChangeNotifier {
   Future<void> logout() async {
     _authRetry?.cancel();
     await _finalizeCall();
-    await _finalizeLiveStream();
+    await _teardownStream();
     channel.disconnect();
     _storeActiveUnread();
     _resetLocalState();
@@ -422,7 +432,7 @@ class CommsController extends ChangeNotifier {
     if (account == null) return;
     _authRetry?.cancel();
     await _finalizeCall();
-    await _finalizeLiveStream();
+    await _teardownStream();
     channel.disconnect();
     _storeActiveUnread();
     _resetLocalState();
@@ -602,37 +612,36 @@ class CommsController extends ChangeNotifier {
         }
         break;
 
-      case 'stream-invite':
-        unawaited(_onStreamInvite(event));
+      case 'stream-viewer-joined':
+        unawaited(_onStreamViewerJoined(event));
         break;
 
-      case 'stream-accept':
-        unawaited(_onStreamAccept(event));
+      case 'stream-viewer-left':
+        unawaited(_onStreamViewerLeft(event));
         break;
 
-      case 'stream-end':
-        unawaited(_onStreamEnd(event));
+      case 'stream-ended':
+        unawaited(_onStreamEnded(event));
         break;
 
-      case 'stream-error':
-        unawaited(_onStreamError(event));
+      case 'stream-kicked':
+        unawaited(_onStreamKicked(event));
+        break;
+
+      case 'stream-updated':
+        unawaited(_onStreamUpdated(event));
+        break;
+
+      case 'stream-modded':
+        _onStreamModChanged(added: true);
+        break;
+
+      case 'stream-unmodded':
+        _onStreamModChanged(added: false);
         break;
 
       case 'stream-signal':
-        final from = event['from'] is Map
-            ? Map<String, dynamic>.from(event['from'])
-            : <String, dynamic>{};
-        if (from['id'] != null) {
-          unawaited(
-            _handleStreamSignal(
-              event['streamId'] as String? ?? '',
-              event['kind'] as String? ?? '',
-              event['payload'] is Map
-                  ? Map<String, dynamic>.from(event['payload'])
-                  : null,
-            ),
-          );
-        }
+        unawaited(_onStreamSignalEvent(event));
         break;
 
       case 'error':
@@ -1364,7 +1373,7 @@ class CommsController extends ChangeNotifier {
   bool _isPolite(String peerId) => (user?.id ?? '').compareTo(peerId) < 0;
 
   Future<bool> startCall(User peer, {required bool video}) async {
-    if (call != null || liveStream != null) return false;
+    if (call != null || streaming) return false;
     if (isBlocked(peer.id)) {
       showSnack(
         L.t(
@@ -1524,7 +1533,7 @@ class CommsController extends ChangeNotifier {
 
     switch (kind) {
       case 'call-invite':
-        if (call != null || liveStream != null) {
+        if (call != null || streaming) {
           _sendSignal(peer.id, 'call-busy', null);
           return;
         }
@@ -1686,12 +1695,81 @@ class CommsController extends ChangeNotifier {
     if (reason != null) showSnack(reason);
   }
 
-  // ---- live streaming (1 broadcaster -> 1 viewer, TURN-relayed) -----------
+  // ---- live streaming -----------------------------------------------------
 
-  /// Starts a live stream to [peer]. The broadcaster sends camera+mic; the
-  /// viewer only receives. Media is forced through the TURN relay.
-  Future<bool> startLiveStream(User peer) async {
-    if (liveStream != null) return false;
+  /// Wires the shared media service to the websocket. Called once at boot.
+  void _bindBroadcast() {
+    broadcast.onSignal = (to, kind, payload) {
+      final id = myStream?.id ?? watching?.id;
+      if (id == null) return;
+      channel.send({
+        'type': 'stream-signal',
+        'streamId': id,
+        'to': to,
+        'kind': kind,
+        'payload': payload,
+      });
+    };
+    broadcast.onViewerConnected = (_) => unawaited(refreshStreamViewers());
+    broadcast.onViewerDisconnected = (_) => unawaited(refreshStreamViewers());
+  }
+
+  /// Loads the Stream tab: my channel profile, the live directory and the game
+  /// autocomplete list. Also recovers a broadcast that outlived an app restart.
+  Future<void> refreshStreamTab() async {
+    final t = token;
+    if (t == null) return;
+    streamLoading = true;
+    notifyListeners();
+    try {
+      final mine = await Api.myStream(t);
+      streamChannel = mine.channel;
+      if (mine.live != null) {
+        myStream ??= mine.live;
+        streamChatId ??= mine.live!.chatId;
+      }
+      streamDirectory = await Api.streams(t);
+      streamGames = await Api.streamGames(t);
+      if (myStream != null) await _refreshStreamManagement();
+    } on ApiException catch (e) {
+      showSnack(e.message);
+    } finally {
+      streamLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> saveStreamChannel({
+    String? title,
+    String? description,
+    String? game,
+    String? visibility,
+    int? slowMode,
+  }) async {
+    final t = token;
+    if (t == null) return false;
+    try {
+      final saved = await Api.saveStreamChannel(
+        t,
+        title: title,
+        description: description,
+        game: game,
+        visibility: visibility,
+        slowMode: slowMode,
+      );
+      streamChannel = saved.channel;
+      if (saved.live != null) myStream = saved.live;
+      notifyListeners();
+      return true;
+    } on ApiException catch (e) {
+      showSnack(e.message);
+      return false;
+    }
+  }
+
+  /// Starts hosting a broadcast. The caller pushes the broadcast screen.
+  Future<bool> goLive({String quality = '720p'}) async {
+    if (streaming) return false;
     if (call != null) {
       showSnack(
         L.t(
@@ -1701,16 +1779,8 @@ class CommsController extends ChangeNotifier {
       );
       return false;
     }
-    if (isBlocked(peer.id)) {
-      showSnack(
-        L.t(
-          'You blocked ${peer.displayName}. Unblock to stream.',
-          ru: 'Вы заблокировали ${peer.displayName}. Разблокируйте, чтобы транслировать.',
-        ),
-      );
-      return false;
-    }
-    if (!socketConnected) {
+    final t = token;
+    if (t == null || !socketConnected) {
       showSnack(
         L.t(
           'Server not connected yet — wait a moment and try again.',
@@ -1719,8 +1789,8 @@ class CommsController extends ChangeNotifier {
       );
       return false;
     }
-    // B1 is server-relayed: without TURN the media would go peer-to-peer, so
-    // refuse rather than silently degrade into a direct call.
+    // Media is relay-only by design: refuse rather than silently going
+    // peer-to-peer when the server has no TURN configuration.
     final ice = await AppConfig.fetchIceConfig();
     if (ice['iceTransportPolicy'] != 'relay') {
       showSnack(
@@ -1731,7 +1801,7 @@ class CommsController extends ChangeNotifier {
       );
       return false;
     }
-    final ok = await webrtc.startLocal(video: true);
+    final ok = await broadcast.startBroadcast(quality: quality);
     if (!ok) {
       showSnack(
         L.t(
@@ -1741,339 +1811,343 @@ class CommsController extends ChangeNotifier {
       );
       return false;
     }
-    final session = LiveStreamSession(
-      id: _newCallId(),
-      peer: peer,
-      outgoing: true,
-      phase: LiveStreamPhase.inviting,
-    );
-    liveStream = session;
-    notifyListeners();
-    channel.send({
-      'type': 'stream-start',
-      'streamId': session.id,
-      'to': peer.id,
-      'video': true,
-    });
-    // A viewer that never answers must not strand the broadcaster.
-    _streamTimer?.cancel();
-    _streamTimer = Timer(const Duration(seconds: 60), () {
-      final active = liveStream;
-      if (active != null &&
-          active.outgoing &&
-          active.phase == LiveStreamPhase.inviting &&
-          active.id == session.id) {
-        unawaited(
-          endLiveStream(
-            reason: L.t(
-              '${peer.displayName} did not join the live stream',
-              ru: '${peer.displayName} не присоединился(лась) к трансляции',
-            ),
-          ),
-        );
-      }
-    });
-    return true;
+    try {
+      final launch = await Api.goLive(t);
+      myStream = launch.stream;
+      streamChatId = launch.chatId;
+      streamViewers = [];
+      streamMods = [];
+      streamBans = [];
+      notifyListeners();
+      unawaited(refreshConversations());
+      unawaited(_refreshStreamManagement());
+      return true;
+    } on ApiException catch (e) {
+      await broadcast.stop();
+      showSnack(e.message);
+      return false;
+    }
   }
 
-  Future<void> acceptLiveStream() async {
-    _streamTimer?.cancel();
-    NotificationService.hideCall();
-    _hideCallSurfaces();
-    await SoundPlayer.stopAndRelease();
-    final s = liveStream;
-    if (s == null || s.outgoing) return;
-    if (!socketConnected) {
+  Future<void> endMyStream({String? reason}) async {
+    final s = myStream;
+    final t = token;
+    if (s != null && t != null) {
+      try {
+        await Api.endStream(t, s.id);
+      } on ApiException {
+        // Already closed server-side; still tear down locally.
+      }
+    }
+    await _teardownStream(reason: reason);
+    unawaited(refreshConversations());
+  }
+
+  /// Joins [info] as a viewer. The caller pushes the watch screen.
+  Future<bool> joinStream(StreamInfo info) async {
+    if (streaming) return false;
+    if (call != null) {
       showSnack(
         L.t(
-          'Server not connected yet — the stream invite expired.',
-          ru: 'Сервер ещё не подключён — приглашение к трансляции истекло.',
+          'Finish the current call before watching a stream.',
+          ru: 'Сначала завершите текущий звонок.',
         ),
       );
-      await _finalizeLiveStream();
-      return;
+      return false;
+    }
+    final t = token;
+    if (t == null || !socketConnected) {
+      showSnack(
+        L.t(
+          'Server not connected yet — wait a moment and try again.',
+          ru: 'Сервер ещё не подключён — подождите немного и попробуйте снова.',
+        ),
+      );
+      return false;
     }
     final ice = await AppConfig.fetchIceConfig();
     if (ice['iceTransportPolicy'] != 'relay') {
-      channel.send({'type': 'stream-decline', 'streamId': s.id});
-      await _finalizeLiveStream(
-        reason: L.t(
+      showSnack(
+        L.t(
           'Live streaming needs the server TURN relay.',
           ru: 'Для трансляций нужен TURN-сервер.',
         ),
       );
-      return;
+      return false;
     }
-    s.phase = LiveStreamPhase.connecting;
-    notifyListeners();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => WidgetsBinding.instance.addPostFrameCallback(
-        (_) => LiveStreamScreen.push(),
-      ),
-    );
     try {
-      // Viewers are receive-only: no camera/mic capture and no local tracks.
-      await webrtc.createPeer(
-        onSignal: (kind, payload) => _sendStreamSignal(s.id, kind, payload),
-        onConnected: () => _markStreamLive(s),
-        onDisconnected: () => _maybeEndStreamSilently(s),
-        polite: _isPolite(s.peer.id),
-        sendLocal: false,
-        relayOnly: true,
-        iceConfig: ice,
-      );
-    } catch (_) {
-      await _finalizeLiveStream();
-      return;
+      final launch = await Api.joinStream(t, info.id);
+      watching = launch.stream;
+      streamChatId = launch.chatId;
+      await broadcast.prepareWatching();
+      unawaited(refreshConversations());
+      notifyListeners();
+      return true;
+    } on ApiException catch (e) {
+      showSnack(e.message);
+      return false;
     }
-    channel.send({'type': 'stream-accept', 'streamId': s.id});
   }
 
-  Future<void> declineLiveStream() async {
-    NotificationService.hideCall();
-    _hideCallSurfaces();
-    final s = liveStream;
-    if (s == null || s.outgoing) return;
-    channel.send({'type': 'stream-decline', 'streamId': s.id});
-    await _finalizeLiveStream();
-  }
-
-  Future<void> endLiveStream({String? reason}) async {
-    NotificationService.hideCall();
-    _hideCallSurfaces();
-    final s = liveStream;
-    if (s != null) {
-      channel.send({'type': 'stream-end', 'streamId': s.id});
-    }
-    await _finalizeLiveStream(reason: reason);
-  }
-
-  Future<void> _onStreamInvite(Map<String, dynamic> event) async {
-    final from = event['from'] is Map
-        ? Map<String, dynamic>.from(event['from'])
-        : <String, dynamic>{};
-    final id = event['streamId'] as String? ?? '';
-    if (from['id'] == null || id.isEmpty) return;
-    final peer = User(
-      id: from['id'] as String,
-      username: from['username'] as String? ?? '',
-      displayName: from['displayName'] as String? ?? '',
-    );
-    if (call != null || liveStream != null) {
-      channel.send({'type': 'stream-decline', 'streamId': id});
-      return;
-    }
-    liveStream = LiveStreamSession(
-      id: id,
-      peer: peer,
-      outgoing: false,
-      phase: LiveStreamPhase.incoming,
-    );
-    _streamTimer?.cancel();
-    _streamTimer = Timer(const Duration(seconds: 30), () {
-      final active = liveStream;
-      if (active != null &&
-          !active.outgoing &&
-          active.phase == LiveStreamPhase.incoming &&
-          active.id == id) {
-        declineLiveStream();
+  Future<void> leaveWatching({String? reason}) async {
+    final s = watching;
+    final t = token;
+    if (s != null && t != null) {
+      try {
+        await Api.leaveStream(t, s.id);
+      } on ApiException {
+        // The stream may already be over.
       }
-    });
-    final title = L.t('Live stream', ru: 'Прямой эфир');
-    final hiddenInTray =
-        Platform.isWindows && !await TrayService.instance.isWindowVisible();
-    final inAppRing =
-        !hiddenInTray &&
-        !(Platform.isAndroid && OsNotifications.instance.inBackground);
-    NotificationService.showCall(
-      displayName: peer.displayName,
-      video: true,
-      title: title,
-      onAccept: acceptLiveStream,
-      onDecline: declineLiveStream,
-      ring: inAppRing,
-    );
-    if (Platform.isAndroid && OsNotifications.instance.inBackground) {
-      unawaited(
-        OsNotifications.instance.showCall(
-          peerId: peer.id,
-          displayName: peer.displayName,
-          video: true,
-          title: title,
-        ),
-      );
-    } else if (Platform.isWindows && hiddenInTray) {
-      unawaited(
-        _maybeWindowsCallToast(peer.id, peer.displayName, true, title: title),
-      );
     }
+    await _teardownStream(reason: reason);
+  }
+
+  Future<void> _teardownStream({String? reason}) async {
+    final wasBroadcasting = myStream != null;
+    myStream = null;
+    watching = null;
+    streamChatId = null;
+    streamViewers = [];
+    streamMods = [];
+    streamBans = [];
+    await broadcast.stop();
     notifyListeners();
-  }
-
-  Future<void> _onStreamAccept(Map<String, dynamic> event) async {
-    final id = event['streamId'] as String? ?? '';
-    final s = liveStream;
-    if (s == null || !s.outgoing || s.id != id) return;
-    _streamTimer?.cancel();
-    s.phase = LiveStreamPhase.connecting;
-    notifyListeners();
-    try {
-      await webrtc.createPeer(
-        onSignal: (kind, payload) => _sendStreamSignal(s.id, kind, payload),
-        onConnected: () => _markStreamLive(s),
-        onDisconnected: () => _maybeEndStreamSilently(s),
-        polite: _isPolite(s.peer.id),
-        sendLocal: true,
-        relayOnly: true,
-      );
-    } catch (_) {
-      await _finalizeLiveStream(
-        reason: L.t(
-          'Could not start the live stream.',
-          ru: 'Не удалось начать трансляцию.',
-        ),
-      );
-      return;
-    }
-    final offer = await webrtc.createOffer();
-    if (offer != null) _sendStreamSignal(s.id, 'offer', offer.toMap());
-  }
-
-  Future<void> _handleStreamSignal(
-    String streamId,
-    String kind,
-    Map<String, dynamic>? payload,
-  ) async {
-    final s = liveStream;
-    if (s == null || s.id != streamId) return;
-    switch (kind) {
-      case 'offer':
-        if (s.outgoing) return; // the broadcaster is always the offerer
-        try {
-          await webrtc.createPeer(
-            onSignal: (kind, payload) => _sendStreamSignal(s.id, kind, payload),
-            onConnected: () => _markStreamLive(s),
-            onDisconnected: () => _maybeEndStreamSilently(s),
-            polite: _isPolite(s.peer.id),
-            sendLocal: false,
-            relayOnly: true,
-          );
-          await webrtc.setRemoteOffer(payload ?? <String, dynamic>{});
-          final answer = await webrtc.createAnswer();
-          if (answer != null) _sendStreamSignal(s.id, 'answer', answer.toMap());
-        } catch (_) {
-          await _finalizeLiveStream(
-            reason: L.t(
-              'Could not join the live stream.',
-              ru: 'Не удалось подключиться к трансляции.',
-            ),
-          );
-        }
-        break;
-      case 'answer':
-        if (!s.outgoing) return;
-        await webrtc.setRemoteAnswer(payload ?? <String, dynamic>{});
-        break;
-      case 'ice':
-        await webrtc.addRemoteIce(payload ?? <String, dynamic>{});
-        break;
-    }
-  }
-
-  Future<void> _onStreamEnd(Map<String, dynamic> event) async {
-    final s = liveStream;
-    final id = event['streamId'] as String? ?? '';
-    if (s == null || (id.isNotEmpty && s.id != id)) return;
-    final reason = event['reason'] as String? ?? 'ended';
-    final String message;
-    if (s.outgoing) {
-      message = switch (reason) {
-        'declined' => L.t(
-          '${s.peer.displayName} declined the live stream',
-          ru: '${s.peer.displayName} отклонил(а) трансляцию',
-        ),
-        'timeout' => L.t(
-          '${s.peer.displayName} did not join the live stream',
-          ru: '${s.peer.displayName} не присоединился(лась) к трансляции',
-        ),
-        _ => L.t(
-          '${s.peer.displayName} left the live stream',
-          ru: '${s.peer.displayName} вышел(ла) из трансляции',
-        ),
-      };
-    } else {
-      message = L.t('The live stream ended', ru: 'Трансляция завершилась');
-    }
-    await _finalizeLiveStream(reason: message);
-  }
-
-  Future<void> _onStreamError(Map<String, dynamic> event) async {
-    final s = liveStream;
-    final id = event['streamId'] as String? ?? '';
-    if (s == null || !s.outgoing || (id.isNotEmpty && s.id != id)) return;
-    final message = switch (event['message']) {
-      'busy' => L.t(
-        '${s.peer.displayName} is already in another stream',
-        ru: '${s.peer.displayName} уже в другой трансляции',
-      ),
-      'blocked' => L.t(
-        'You cannot stream to ${s.peer.displayName}',
-        ru: 'Вы не можете транслировать для ${s.peer.displayName}',
-      ),
-      'unavailable' => L.t(
-        '${s.peer.displayName} is unavailable',
-        ru: '${s.peer.displayName} недоступен(на)',
-      ),
-      _ => L.t(
-        'Could not start the live stream.',
-        ru: 'Не удалось начать трансляцию.',
-      ),
-    };
-    await _finalizeLiveStream(reason: message);
-  }
-
-  void _markStreamLive(LiveStreamSession session) {
-    if (!identical(liveStream, session)) return;
-    _streamTimer?.cancel();
-    session.phase = LiveStreamPhase.live;
-    notifyListeners();
-  }
-
-  void _maybeEndStreamSilently(LiveStreamSession session) {
-    if (!identical(liveStream, session)) return;
-    if (session.phase == LiveStreamPhase.live) {
-      unawaited(
-        _finalizeLiveStream(
-          reason: L.t(
-            'The live stream disconnected',
-            ru: 'Трансляция прервалась',
-          ),
-        ),
-      );
-    } else if (session.phase != LiveStreamPhase.incoming) {
-      unawaited(_finalizeLiveStream());
-    }
-  }
-
-  Future<void> _finalizeLiveStream({String? reason}) async {
-    _streamTimer?.cancel();
-    NotificationService.hideCall();
-    _hideCallSurfaces();
-    await SoundPlayer.stopAndRelease();
-    final had = liveStream != null;
-    liveStream = null;
-    await webrtc.stop();
-    if (had) notifyListeners();
+    if (wasBroadcasting) unawaited(refreshConversations());
     if (reason != null) showSnack(reason);
   }
 
-  void _sendStreamSignal(String streamId, String kind, Map? payload) {
-    channel.send({
-      'type': 'stream-signal',
-      'streamId': streamId,
-      'kind': kind,
-      'payload': payload,
-    });
+  Future<void> _refreshStreamManagement() async {
+    final s = myStream;
+    final t = token;
+    if (s == null || t == null) return;
+    try {
+      streamViewers = await Api.streamViewers(t, s.id);
+      streamMods = await Api.streamMods(t, s.id);
+      streamBans = await Api.streamBans(t, s.id);
+      myStream = s.copyWith(viewerCount: streamViewers.length);
+      notifyListeners();
+    } on ApiException {
+      // The broadcast may have just ended; the screen closes on its own.
+    }
+  }
+
+  Future<void> refreshStreamViewers() async {
+    final s = myStream;
+    final t = token;
+    if (s == null || t == null) return;
+    try {
+      final viewers = await Api.streamViewers(t, s.id);
+      streamViewers = viewers;
+      myStream = s.copyWith(viewerCount: viewers.length);
+      notifyListeners();
+    } on ApiException {
+      // ignore: transient
+    }
+  }
+
+  Future<void> kickViewer(String userId) async {
+    final s = myStream;
+    final t = token;
+    if (s == null || t == null) return;
+    try {
+      await Api.kickStreamViewer(t, s.id, userId);
+      await broadcast.removeViewer(userId);
+      await refreshStreamViewers();
+    } on ApiException catch (e) {
+      showSnack(e.message);
+    }
+  }
+
+  Future<void> banViewer(String userId) async {
+    final s = myStream;
+    final t = token;
+    if (s == null || t == null) return;
+    try {
+      await Api.banStreamViewer(t, s.id, userId);
+      await broadcast.removeViewer(userId);
+      await _refreshStreamManagement();
+    } on ApiException catch (e) {
+      showSnack(e.message);
+    }
+  }
+
+  Future<void> unbanViewer(String userId) async {
+    final s = myStream;
+    final t = token;
+    if (s == null || t == null) return;
+    try {
+      await Api.unbanStreamViewer(t, s.id, userId);
+      await _refreshStreamManagement();
+    } on ApiException catch (e) {
+      showSnack(e.message);
+    }
+  }
+
+  Future<void> appointStreamMod(User user) async {
+    final s = myStream;
+    final t = token;
+    if (s == null || t == null) return;
+    try {
+      await Api.addStreamMod(t, s.id, user.id);
+      await _refreshStreamManagement();
+    } on ApiException catch (e) {
+      showSnack(e.message);
+    }
+  }
+
+  Future<void> removeStreamMod(User user) async {
+    final s = myStream;
+    final t = token;
+    if (s == null || t == null) return;
+    try {
+      await Api.removeStreamMod(t, s.id, user.id);
+      await _refreshStreamManagement();
+    } on ApiException catch (e) {
+      showSnack(e.message);
+    }
+  }
+
+  Future<void> setStreamSlowMode(int seconds) async {
+    await saveStreamChannel(slowMode: seconds);
+  }
+
+  String get streamQuality => broadcast.quality;
+
+  /// Switches the capture preset while live. Tracks are hot-swapped on every
+  /// viewer connection, so nobody has to re-join.
+  Future<void> setStreamQuality(String quality) async {
+    final ok = await broadcast.setQuality(quality);
+    if (!ok) {
+      showSnack(
+        L.t(
+          'Could not switch the stream quality.',
+          ru: 'Не удалось сменить качество трансляции.',
+        ),
+      );
+    }
+    notifyListeners();
+  }
+
+  /// Loads the dedicated conversation of the current broadcast for the chat UI.
+  Future<Conversation?> openStreamChat() async {
+    final t = token;
+    final id = streamChatId;
+    if (t == null || id == null) return null;
+    try {
+      return await Api.conversation(t, id);
+    } on ApiException catch (e) {
+      showSnack(e.message);
+      return null;
+    }
+  }
+
+  // ---- broadcast events ---------------------------------------------------
+
+  Future<void> _onStreamViewerJoined(Map<String, dynamic> event) async {
+    final s = myStream;
+    if (s == null || event['streamId'] != s.id) return;
+    final viewer = event['viewer'] is Map
+        ? User.fromJson(Map<String, dynamic>.from(event['viewer'] as Map))
+        : null;
+    if (viewer == null) return;
+    myStream = s.copyWith(
+      viewerCount: (event['viewerCount'] as num?)?.toInt() ?? s.viewerCount,
+    );
+    notifyListeners();
+    await broadcast.addViewer(viewer.id);
+    await refreshStreamViewers();
+  }
+
+  Future<void> _onStreamViewerLeft(Map<String, dynamic> event) async {
+    final s = myStream;
+    if (s == null || event['streamId'] != s.id) return;
+    final userId = event['userId'] as String? ?? '';
+    if (userId.isNotEmpty) await broadcast.removeViewer(userId);
+    myStream = s.copyWith(
+      viewerCount: (event['viewerCount'] as num?)?.toInt() ?? s.viewerCount,
+    );
+    notifyListeners();
+    await refreshStreamViewers();
+  }
+
+  Future<void> _onStreamSignalEvent(Map<String, dynamic> event) async {
+    if (!streaming) return;
+    final id = myStream?.id ?? watching?.id;
+    if (event['streamId'] != id) return;
+    final from = event['from'] is Map
+        ? Map<String, dynamic>.from(event['from'] as Map)
+        : <String, dynamic>{};
+    final fromId = from['id'] as String? ?? '';
+    if (fromId.isEmpty) return;
+    final payload = event['payload'] is Map
+        ? Map<String, dynamic>.from(event['payload'] as Map)
+        : <String, dynamic>{};
+    await broadcast.handleSignal(
+      fromId,
+      event['kind'] as String? ?? '',
+      payload,
+    );
+  }
+
+  Future<void> _onStreamEnded(Map<String, dynamic> event) async {
+    final id = event['streamId'] as String? ?? '';
+    if (watching != null && watching!.id == id) {
+      await _teardownStream(
+        reason: L.t(
+          'The live stream ended',
+          ru: 'Трансляция завершилась',
+        ),
+      );
+    } else if (myStream != null && myStream!.id == id) {
+      await _teardownStream();
+    }
+    unawaited(refreshStreamTab());
+  }
+
+  Future<void> _onStreamKicked(Map<String, dynamic> event) async {
+    final id = event['streamId'] as String? ?? '';
+    final s = watching;
+    if (s == null || s.id != id) return;
+    final banned = event['reason'] == 'banned';
+    await _teardownStream(
+      reason: banned
+          ? L.t(
+              'You are banned from this channel',
+              ru: 'Вы забанены на этом канале',
+            )
+          : L.t(
+              'You were removed from the stream',
+              ru: 'Вас удалили с трансляции',
+            ),
+    );
+    unawaited(refreshStreamTab());
+  }
+
+  Future<void> _onStreamUpdated(Map<String, dynamic> event) async {
+    if (event['stream'] is! Map) return;
+    final updated = StreamInfo.fromJson(
+      Map<String, dynamic>.from(event['stream'] as Map),
+    );
+    if (watching != null && watching!.id == updated.id) {
+      watching = updated;
+      notifyListeners();
+    }
+    unawaited(refreshStreamTab());
+  }
+
+  void _onStreamModChanged({required bool added}) {
+    unawaited(refreshStreamTab());
+    showSnack(
+      added
+          ? L.t(
+              'You are now a moderator of this channel',
+              ru: 'Вы теперь модератор этого канала',
+            )
+          : L.t(
+              'You are no longer a moderator of this channel',
+              ru: 'Вы больше не модератор этого канала',
+            ),
+    );
   }
 
   String _newCallId() {
@@ -2086,7 +2160,6 @@ class CommsController extends ChangeNotifier {
     _authRetry?.cancel();
     _pingTimer?.cancel();
     _ringTimer?.cancel();
-    _streamTimer?.cancel();
     channel.connected.removeListener(_onSocketConnectedChanged);
     SoundPlayer.stopAndRelease();
     for (final t in _typingTimers.values) {

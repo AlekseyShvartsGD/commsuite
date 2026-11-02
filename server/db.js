@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const dataDir = path.join(__dirname, 'data');
+export const dataDir = process.env.COMMSUITE_DATA_DIR
+  ? path.resolve(process.env.COMMSUITE_DATA_DIR)
+  : path.join(__dirname, 'data');
 export const uploadsDir = path.join(dataDir, 'uploads');
 fs.mkdirSync(uploadsDir, { recursive: true });
 
@@ -22,6 +24,7 @@ CREATE TABLE IF NOT EXISTS users (
   bio           TEXT NOT NULL DEFAULT '',
   role          TEXT NOT NULL DEFAULT 'user',
   is_verified   INTEGER NOT NULL DEFAULT 0,
+  hidden        INTEGER NOT NULL DEFAULT 0,
   password_hash TEXT NOT NULL,
   created_at    INTEGER NOT NULL
 );
@@ -148,6 +151,62 @@ CREATE TABLE IF NOT EXISTS games (
 
 CREATE INDEX IF NOT EXISTS idx_games_active ON games(conversation_id, status);
 
+-- ---- live streaming -------------------------------------------------------
+-- A channel is the persistent, per-account stream profile shown in the Stream
+-- tab. Sessions snapshot it when the broadcaster goes live, so editing the
+-- profile during a stream cannot rewrite history.
+CREATE TABLE IF NOT EXISTS stream_channels (
+  user_id     TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  title       TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  game        TEXT NOT NULL DEFAULT '',
+  visibility  TEXT NOT NULL DEFAULT 'public', -- public | unlisted | contacts
+  slow_mode   INTEGER NOT NULL DEFAULT 0,     -- seconds between chat messages
+  updated_at  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS stream_sessions (
+  id             TEXT PRIMARY KEY,
+  broadcaster_id TEXT NOT NULL,
+  title          TEXT NOT NULL,
+  description    TEXT NOT NULL DEFAULT '',
+  game           TEXT NOT NULL DEFAULT '',
+  visibility     TEXT NOT NULL DEFAULT 'public',
+  slow_mode      INTEGER NOT NULL DEFAULT 0,
+  chat_id        TEXT,
+  status         TEXT NOT NULL DEFAULT 'live', -- live | ended
+  started_at     INTEGER NOT NULL,
+  ended_at       INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_stream_live ON stream_sessions(status, started_at);
+CREATE INDEX IF NOT EXISTS idx_stream_broadcaster ON stream_sessions(broadcaster_id, status);
+
+CREATE TABLE IF NOT EXISTS stream_viewers (
+  stream_id TEXT NOT NULL REFERENCES stream_sessions(id) ON DELETE CASCADE,
+  user_id   TEXT NOT NULL,
+  joined_at INTEGER NOT NULL,
+  PRIMARY KEY (stream_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_stream_viewers_user ON stream_viewers(user_id);
+
+-- Channel moderators may delete chat messages and kick/ban viewers.
+CREATE TABLE IF NOT EXISTS stream_mods (
+  broadcaster_id TEXT NOT NULL,
+  user_id        TEXT NOT NULL,
+  created_at     INTEGER NOT NULL,
+  PRIMARY KEY (broadcaster_id, user_id)
+);
+
+-- Channel bans persist across streams: a banned viewer cannot join or chat.
+CREATE TABLE IF NOT EXISTS stream_bans (
+  broadcaster_id TEXT NOT NULL,
+  user_id        TEXT NOT NULL,
+  created_at     INTEGER NOT NULL,
+  PRIMARY KEY (broadcaster_id, user_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_unread ON messages(conversation_id, sender_id, read_at);
 `);
@@ -159,6 +218,10 @@ if (!userCols.includes('bio')) {
 }
 if (!userCols.includes('is_verified')) {
   db.exec("ALTER TABLE users ADD COLUMN is_verified INTEGER NOT NULL DEFAULT 0");
+}
+// Demo/test accounts stay out of the people directory but keep their history.
+if (!userCols.includes('hidden')) {
+  db.exec('ALTER TABLE users ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
 }
 const gameCols = db.prepare('PRAGMA table_info(games)').all().map((c) => c.name);
 if (!gameCols.includes('guess_count')) {

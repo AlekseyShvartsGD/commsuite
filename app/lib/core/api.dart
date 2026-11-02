@@ -442,5 +442,150 @@ class Api {
     return Attachment.fromJson(data!['attachment']);
   }
 
+  // --- Live streaming ------------------------------------------------------
+  // A channel is a persistent profile; going live snapshots it into a session
+  // that the directory lists. Media never touches these endpoints.
+
+  static Future<({StreamChannel channel, StreamInfo? live})> myStream(
+      String token) async {
+    final data = await _request('GET', '/streams/mine', token: token);
+    final live = data['live'];
+    return (
+      channel: StreamChannel.fromJson(
+          Map<String, dynamic>.from(data['channel'] as Map? ?? const {})),
+      live: live == null
+          ? null
+          : StreamInfo.fromJson(Map<String, dynamic>.from(live as Map)),
+    );
+  }
+
+  static Future<({StreamChannel channel, StreamInfo? live})> saveStreamChannel(
+    String token, {
+    String? title,
+    String? description,
+    String? game,
+    String? visibility,
+    int? slowMode,
+  }) async {
+    final data = await _request('PATCH', '/streams/channel', body: {
+      'title': ?title,
+      'description': ?description,
+      'game': ?game,
+      'visibility': ?visibility,
+      'slowMode': ?slowMode,
+    }, token: token);
+    final live = data['live'];
+    return (
+      channel: StreamChannel.fromJson(
+          Map<String, dynamic>.from(data['channel'] as Map? ?? const {})),
+      live: live == null
+          ? null
+          : StreamInfo.fromJson(Map<String, dynamic>.from(live as Map)),
+    );
+  }
+
+  static Future<List<StreamInfo>> streams(String token) async {
+    final data = await _request('GET', '/streams', token: token);
+    return (data['streams'] as List)
+        .map((s) => StreamInfo.fromJson(s as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<List<String>> streamGames(String token) async {
+    final data = await _request('GET', '/streams/games', token: token);
+    return (data['games'] as List).cast<String>();
+  }
+
+  static Future<StreamInfo> stream(String token, String id) async {
+    final data = await _request('GET', '/streams/$id', token: token);
+    return StreamInfo.fromJson(data['stream']);
+  }
+
+  static Future<StreamLaunch> goLive(
+    String token, {
+    String? title,
+    String? description,
+    String? game,
+    String? visibility,
+    int? slowMode,
+  }) async {
+    final data = await _request('POST', '/streams', body: {
+      'title': ?title,
+      'description': ?description,
+      'game': ?game,
+      'visibility': ?visibility,
+      'slowMode': ?slowMode,
+    }, token: token);
+    return StreamLaunch(
+      stream: StreamInfo.fromJson(data['stream']),
+      chatId: data['chatId'] as String? ?? '',
+    );
+  }
+
+  static Future<StreamLaunch> joinStream(String token, String id) async {
+    final data = await _request('POST', '/streams/$id/join', token: token);
+    return StreamLaunch(
+      stream: StreamInfo.fromJson(data['stream']),
+      chatId: data['chatId'] as String? ?? '',
+    );
+  }
+
+  static Future<void> leaveStream(String token, String id) async {
+    await _request('POST', '/streams/$id/leave', token: token);
+  }
+
+  static Future<void> endStream(String token, String id) async {
+    await _request('POST', '/streams/$id/end', token: token);
+  }
+
+  static Future<List<StreamViewer>> streamViewers(String token, String id) async {
+    final data = await _request('GET', '/streams/$id/viewers', token: token);
+    return (data['viewers'] as List)
+        .map((v) => StreamViewer.fromJson(v as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<void> kickStreamViewer(
+      String token, String id, String userId) async {
+    await _request('POST', '/streams/$id/kick',
+        body: {'userId': userId}, token: token);
+  }
+
+  static Future<void> banStreamViewer(
+      String token, String id, String userId) async {
+    await _request('POST', '/streams/$id/ban',
+        body: {'userId': userId}, token: token);
+  }
+
+  static Future<void> unbanStreamViewer(
+      String token, String id, String userId) async {
+    await _request('DELETE', '/streams/$id/ban/$userId', token: token);
+  }
+
+  static Future<List<User>> streamBans(String token, String id) async {
+    final data = await _request('GET', '/streams/$id/bans', token: token);
+    return (data['bans'] as List)
+        .map((u) => User.fromJson(u as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<List<User>> streamMods(String token, String id) async {
+    final data = await _request('GET', '/streams/$id/mods', token: token);
+    return (data['mods'] as List)
+        .map((u) => User.fromJson(u as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<void> addStreamMod(
+      String token, String id, String userId) async {
+    await _request('POST', '/streams/$id/mods',
+        body: {'userId': userId}, token: token);
+  }
+
+  static Future<void> removeStreamMod(
+      String token, String id, String userId) async {
+    await _request('DELETE', '/streams/$id/mods/$userId', token: token);
+  }
+
   static String attachmentUrl(String url) => AppConfig.serverUrl + url;
 }

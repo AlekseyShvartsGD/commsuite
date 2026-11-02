@@ -8,6 +8,7 @@ import 'chat/conversations_screen.dart';
 import 'contacts/contacts_screen.dart';
 import 'files/files_screen.dart';
 import 'setting/settings_screen.dart';
+import 'stream/stream_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -61,6 +62,7 @@ class _HomeShellState extends State<HomeShell> {
                 const ContactsScreen(),
                 const FilesScreen(),
                 _browserMounted ? const BrowserScreen() : const SizedBox.shrink(),
+                const StreamScreen(),
                 const SettingsScreen(),
               ],
             ),
@@ -116,6 +118,11 @@ class _HomeShellState extends State<HomeShell> {
             icon: const Icon(Icons.public),
             selectedIcon: const Icon(Icons.public),
             label: L.t('Browse', ru: 'Браузер'),
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.live_tv_outlined),
+            selectedIcon: const Icon(Icons.live_tv),
+            label: L.t('Stream', ru: 'Трансляции'),
           ),
           NavigationDestination(
             icon: const Icon(Icons.settings_outlined),

@@ -440,13 +440,15 @@ router.get('/users', (req, res) => {
     rows = db
       .prepare(
         `SELECT * FROM users
-         WHERE id != ? AND (username LIKE ? OR display_name LIKE ?)
+         WHERE id != ? AND hidden = 0 AND (username LIKE ? OR display_name LIKE ?)
          ORDER BY display_name COLLATE NOCASE LIMIT 100`
       )
       .all(me, `%${query}%`, `%${query}%`);
   } else {
     rows = db
-      .prepare('SELECT * FROM users WHERE id != ? ORDER BY display_name COLLATE NOCASE LIMIT 100')
+      .prepare(
+        'SELECT * FROM users WHERE id != ? AND hidden = 0 ORDER BY display_name COLLATE NOCASE LIMIT 100'
+      )
       .all(me);
   }
   res.json({ users: rows.map(publicUser) });
@@ -1271,6 +1273,36 @@ router.post('/conversations/:id/messages', (req, res) => {
   const peerId = conversationParticipants(conversation).find((uid) => uid !== me);
   if (conversation.kind !== 'group' && peerId && isBlockedAny(me, peerId))
     return res.status(403).json({ error: 'blocked' });
+
+  // Stream chats have their own rules: channel bans apply immediately, and the
+  // broadcaster/mods can slow the chat down without muting the whole group.
+  // Only live sessions are restricted; the archived chat stays readable.
+  const liveStream = db
+    .prepare("SELECT * FROM stream_sessions WHERE chat_id = ? AND status = 'live'")
+    .get(conversation.id);
+  if (liveStream && me !== liveStream.broadcaster_id) {
+    const channelMod = db
+      .prepare('SELECT 1 FROM stream_mods WHERE broadcaster_id = ? AND user_id = ?')
+      .get(liveStream.broadcaster_id, me);
+    if (!channelMod) {
+      const banned = db
+        .prepare('SELECT 1 FROM stream_bans WHERE broadcaster_id = ? AND user_id = ?')
+        .get(liveStream.broadcaster_id, me);
+      if (banned) return res.status(403).json({ error: 'banned from this channel' });
+      if (liveStream.slow_mode > 0) {
+        const last = db
+          .prepare(
+            `SELECT created_at FROM messages
+              WHERE conversation_id = ? AND sender_id = ?
+              ORDER BY created_at DESC LIMIT 1`
+          )
+          .get(conversation.id, me);
+        const waitMs = liveStream.slow_mode * 1000 - (Date.now() - (last?.created_at ?? 0));
+        if (waitMs > 0)
+          return res.status(429).json({ error: 'slow mode', retryAfterMs: waitMs });
+      }
+    }
+  }
 
   const kind = req.body?.kind === 'file' ? 'file' : 'text';
   const body = req.body?.body != null ? String(req.body.body).slice(0, 8000) : '';
