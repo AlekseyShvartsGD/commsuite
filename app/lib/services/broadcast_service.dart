@@ -22,6 +22,7 @@ class BroadcastService {
   final RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
 
   final Map<String, _Peer> _peers = {};
+  final Map<String, List<RTCIceCandidate>> _orphanIce = {};
   MediaStream? _localStream;
   Map<String, dynamic>? _iceConfig;
   bool _broadcaster = false;
@@ -40,6 +41,10 @@ class BroadcastService {
 
   /// Broadcaster-side: a viewer's peer connection dropped.
   void Function(String viewerId)? onViewerDisconnected;
+
+  /// Viewer-side: the broadcaster's media has been attached to
+  /// [remoteRenderer]. The UI listens for this to replace its placeholder.
+  void Function()? onRemoteStream;
 
   bool get broadcasting => _broadcaster;
   bool get micEnabled => _micEnabled;
@@ -148,9 +153,16 @@ class BroadcastService {
       if (value == null || value.isEmpty) return;
       onSignal?.call(peerId, 'ice', candidate.toMap());
     };
-    pc.onTrack = (e) {
+    pc.onTrack = (e) async {
       if (sendLocal) return; // the broadcaster does not render remote video
-      if (e.streams.isNotEmpty) remoteRenderer.srcObject = e.streams.first;
+      if (e.streams.isNotEmpty) {
+        remoteRenderer.srcObject = e.streams.first;
+      } else {
+        final stream = await createLocalMediaStream('remote');
+        await stream.addTrack(e.track);
+        remoteRenderer.srcObject = stream;
+      }
+      onRemoteStream?.call();
     };
     pc.onConnectionState = (state) {
       final peer = _peers[peerId];
@@ -234,6 +246,10 @@ class BroadcastService {
         await pc.close();
         return;
       }
+      // Candidates that raced ahead of the offer wait here.
+      for (final candidate in _orphanIce.remove(from) ?? const <RTCIceCandidate>[]) {
+        peer.pendingIce.add(candidate);
+      }
     }
     if (kind != 'offer') return;
     await _setRemote(peer, payload);
@@ -271,7 +287,20 @@ class BroadcastService {
 
   Future<void> _addIce(String from, Map<String, dynamic> payload) async {
     final peer = _peers[from];
-    if (peer == null) return;
+    if (peer == null) {
+      // Viewer side: offer and ICE travel as separate messages and may arrive
+      // out of order. Keep early candidates until the offer creates the peer.
+      if (!_broadcaster) {
+        _orphanIce.putIfAbsent(from, () => []).add(
+          RTCIceCandidate(
+            '${payload['candidate'] ?? ''}',
+            payload['sdpMid'] as String?,
+            (payload['sdpMLineIndex'] as num?)?.toInt(),
+          ),
+        );
+      }
+      return;
+    }
     final candidate = RTCIceCandidate(
       '${payload['candidate'] ?? ''}',
       payload['sdpMid'] as String?,
@@ -323,6 +352,7 @@ class BroadcastService {
       await _closePeer(peer);
     }
     _peers.clear();
+    _orphanIce.clear();
     localRenderer.srcObject = null;
     remoteRenderer.srcObject = null;
     final stream = _localStream;

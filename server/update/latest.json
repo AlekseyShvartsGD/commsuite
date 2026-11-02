@@ -2,21 +2,21 @@
     "installer":  "/update/commsuite-setup.exe",
     "version":  "1.1.0",
     "apk":  "/update/commsuite.apk",
-    "apkSize":  97430959,
+    "apkSize":  97447343,
     "mirrors":  {
                     "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.0/commsuite-linux-1.1.0.tar.gz",
                     "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.0/commsuite-setup.exe",
                     "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.0/commsuite.apk"
                 },
     "apkVersion":  "1.1.0",
-    "publishedAt":  1793603674252,
-    "installerSize":  23782912,
+    "publishedAt":  1793604095954,
+    "installerSize":  23779328,
     "linux":  "/update/commsuite-linux-1.1.0.tar.gz",
-    "installerSha256":  "e76907ec892a26d24dca5637ceb8e7d478e4aaefb0119462f00946dfd6f40cea",
-    "linuxSha256":  "38261bb53e62a5883fab04d30177860e753f842a3ec22903ff6edafe275f477b",
+    "installerSha256":  "86fa31c550e10b3190b7511491ef4bc66c0d504d33e623c22a3f3056644565cd",
+    "linuxSha256":  "55623b4304b165dba5ceda8b7ac45995b7201886888627ef5e2bee82d11462d1",
     "windowsVersion":  "1.1.0",
     "notes":  "Stream tab: Twitch-like live directory with channel profiles (title, description, game autocomplete), public/unlisted/contacts visibility and multi-viewer broadcasts for up to 8 viewers. Dedicated per-stream chat, viewer list, kick/ban, channel moderators and slow mode. Media stays relayed through the server TURN relay (never peer-to-peer). Demo and smoke-test accounts are now hidden from the people directory.",
-    "apkSha256":  "47971c787f44ac596c6327ee642a6176589a586c626af07020629b4751c5e8f8",
-    "linuxSize":  21155125,
+    "apkSha256":  "d7a58c6efdfa97e260b3cbf506cbe5c38bd4d8c8f1a89eff5c3987e16b41bf28",
+    "linuxSize":  21154434,
     "linuxVersion":  "1.1.0"
 }

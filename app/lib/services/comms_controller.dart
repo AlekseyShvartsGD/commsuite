@@ -1712,6 +1712,7 @@ class CommsController extends ChangeNotifier {
     };
     broadcast.onViewerConnected = (_) => unawaited(refreshStreamViewers());
     broadcast.onViewerDisconnected = (_) => unawaited(refreshStreamViewers());
+    broadcast.onRemoteStream = notifyListeners;
   }
 
   /// Loads the Stream tab: my channel profile, the live directory and the game
