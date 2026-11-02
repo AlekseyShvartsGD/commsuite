@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app.dart';
@@ -97,6 +99,7 @@ class _HomeShellState extends State<HomeShell> {
         onDestinationSelected: (i) => setState(() {
           if (i == 3) _browserMounted = true;
           _index = i;
+          if (i == 4) unawaited(controller.refreshStreamTab());
         }),
         destinations: [
           NavigationDestination(

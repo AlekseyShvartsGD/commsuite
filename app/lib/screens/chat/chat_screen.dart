@@ -343,6 +343,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     final me = CommsScope.read(context).user?.id;
     final mine = message.senderId == me;
+    final canModerate =
+        conversation.members.any((m) => m.user.id == me && m.isAdmin);
     final canEdit = mine && message.kind == MessageKind.text;
     final action = await showModalBottomSheet<String>(
       context: context,
@@ -412,7 +414,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   title: Text(L.t('Edit', ru: 'Изменить')),
                   onTap: () => Navigator.pop(context, 'edit'),
                 ),
-              if (mine)
+              if (mine || canModerate)
                 ListTile(
                   leading: const Icon(Icons.delete_outline, color: Colors.red),
                   title: Text(

@@ -558,6 +558,8 @@ class StreamInfo {
     String? visibility,
     int? slowMode,
     String? status,
+    bool? canManage,
+    bool? isMod,
   }) =>
       StreamInfo(
         id: id,
@@ -574,8 +576,8 @@ class StreamInfo {
         chatId: chatId,
         broadcaster: broadcaster,
         isMine: isMine,
-        canManage: canManage,
-        isMod: isMod,
+        canManage: canManage ?? this.canManage,
+        isMod: isMod ?? this.isMod,
         isViewer: isViewer,
       );
 }

@@ -1375,8 +1375,15 @@ router.delete('/messages/:id', (req, res) => {
   const ctx = getMessageFor(req, res);
   if (!ctx) return;
   const { me, msg, conversation } = ctx;
-  if (msg.sender_id !== me)
-    return res.status(403).json({ error: 'only the sender can delete a message' });
+  if (msg.sender_id !== me) {
+    // Group owners/admins and live-stream channel mods (role 'admin' in the
+    // stream chat) can remove other people's messages. DMs stay sender-only.
+    const member = db
+      .prepare('SELECT role FROM group_members WHERE conversation_id = ? AND user_id = ?')
+      .get(conversation.id, me);
+    if (!member || (member.role !== 'owner' && member.role !== 'admin'))
+      return res.status(403).json({ error: 'only the sender or a chat moderator can delete a message' });
+  }
   if (msg.deleted) return res.status(400).json({ error: 'message already deleted' });
 
   const attachmentId = msg.attachment_id;

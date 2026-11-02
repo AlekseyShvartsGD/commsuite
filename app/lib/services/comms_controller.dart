@@ -633,11 +633,11 @@ class CommsController extends ChangeNotifier {
         break;
 
       case 'stream-modded':
-        _onStreamModChanged(added: true);
+        _onStreamModChanged(event, added: true);
         break;
 
       case 'stream-unmodded':
-        _onStreamModChanged(added: false);
+        _onStreamModChanged(event, added: false);
         break;
 
       case 'stream-signal':
@@ -1946,6 +1946,65 @@ class CommsController extends ChangeNotifier {
     }
   }
 
+  /// Viewer list for any stream we are allowed to moderate (broadcaster or a
+  /// channel mod watching someone else's broadcast).
+  Future<List<StreamViewer>> fetchStreamViewers(String streamId) async {
+    final t = token;
+    if (t == null) return const [];
+    try {
+      return await Api.streamViewers(t, streamId);
+    } on ApiException catch (e) {
+      showSnack(e.message);
+      return const [];
+    }
+  }
+
+  Future<List<User>> fetchStreamBans(String streamId) async {
+    final t = token;
+    if (t == null) return const [];
+    try {
+      return await Api.streamBans(t, streamId);
+    } on ApiException catch (e) {
+      showSnack(e.message);
+      return const [];
+    }
+  }
+
+  Future<void> kickStreamViewer(String streamId, String userId) async {
+    final t = token;
+    if (t == null) return;
+    try {
+      await Api.kickStreamViewer(t, streamId, userId);
+      if (myStream?.id == streamId) await broadcast.removeViewer(userId);
+      await refreshStreamViewers();
+    } on ApiException catch (e) {
+      showSnack(e.message);
+    }
+  }
+
+  Future<void> banStreamViewer(String streamId, String userId) async {
+    final t = token;
+    if (t == null) return;
+    try {
+      await Api.banStreamViewer(t, streamId, userId);
+      if (myStream?.id == streamId) await broadcast.removeViewer(userId);
+      await _refreshStreamManagement();
+    } on ApiException catch (e) {
+      showSnack(e.message);
+    }
+  }
+
+  Future<void> unbanStreamViewer(String streamId, String userId) async {
+    final t = token;
+    if (t == null) return;
+    try {
+      await Api.unbanStreamViewer(t, streamId, userId);
+      await _refreshStreamManagement();
+    } on ApiException catch (e) {
+      showSnack(e.message);
+    }
+  }
+
   Future<void> kickViewer(String userId) async {
     final s = myStream;
     final t = token;
@@ -2136,7 +2195,13 @@ class CommsController extends ChangeNotifier {
     unawaited(refreshStreamTab());
   }
 
-  void _onStreamModChanged({required bool added}) {
+  void _onStreamModChanged(Map<String, dynamic> event, {required bool added}) {
+    final broadcasterId = event['broadcasterId'] as String? ?? '';
+    final w = watching;
+    if (w != null && broadcasterId.isNotEmpty && w.broadcaster.id == broadcasterId) {
+      watching = w.copyWith(canManage: added, isMod: added);
+      notifyListeners();
+    }
     unawaited(refreshStreamTab());
     showSnack(
       added

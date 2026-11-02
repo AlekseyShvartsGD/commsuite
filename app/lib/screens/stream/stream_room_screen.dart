@@ -7,6 +7,7 @@ import '../../app.dart';
 import '../../core/localizations.dart';
 import '../../models.dart';
 import '../../services/comms_controller.dart';
+import '../../widgets/user_avatar.dart';
 import '../chat/chat_screen.dart';
 
 /// The full-screen broadcast room. The broadcaster sees their own camera
@@ -198,12 +199,7 @@ class _StreamRoomScreenState extends State<StreamRoomScreen> {
                   ),
                 ),
                 Text(
-                  widget.broadcaster
-                      ? L.t(
-                          '${stream.viewerCount} of ${stream.maxViewers} viewers',
-                          ru: '${stream.viewerCount} из ${stream.maxViewers} зрителей',
-                        )
-                      : stream.broadcaster.displayName,
+                  _topBarSubtitle(stream),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: Colors.white54, fontSize: 12),
@@ -211,6 +207,12 @@ class _StreamRoomScreenState extends State<StreamRoomScreen> {
               ],
             ),
           ),
+          if (stream.canManage)
+            IconButton(
+              tooltip: L.t('Moderation', ru: 'Модерация'),
+              icon: const Icon(Icons.shield_outlined, color: Colors.white),
+              onPressed: () => _openModeration(stream),
+            ),
           IconButton(
             tooltip: L.t('Close', ru: 'Закрыть'),
             icon: const Icon(Icons.close, color: Colors.white),
@@ -358,6 +360,22 @@ class _StreamRoomScreenState extends State<StreamRoomScreen> {
     );
   }
 
+  String _topBarSubtitle(StreamInfo stream) {
+    if (!widget.broadcaster) return stream.broadcaster.displayName;
+    return L.t(
+      '${stream.viewerCount} of ${stream.maxViewers} viewers',
+      ru: '${stream.viewerCount} из ${stream.maxViewers} зрителей',
+    );
+  }
+
+  Future<void> _openModeration(StreamInfo stream) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _ModerationSheet(streamId: stream.id),
+    );
+  }
+
   // ---- actions -------------------------------------------------------------
 
   Future<void> _openChat() async {
@@ -481,6 +499,191 @@ class _RoundToggle extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             child: Icon(icon, color: Colors.white, size: 22),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Viewer and ban management for the broadcaster and channel moderators.
+class _ModerationSheet extends StatefulWidget {
+  const _ModerationSheet({required this.streamId});
+
+  final String streamId;
+
+  @override
+  State<_ModerationSheet> createState() => _ModerationSheetState();
+}
+
+class _ModerationSheetState extends State<_ModerationSheet> {
+  List<StreamViewer> _viewers = const [];
+  List<User> _bans = const [];
+  bool _loading = true;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  Future<void> _load() async {
+    final controller = CommsScope.read(context);
+    final viewers = await controller.fetchStreamViewers(widget.streamId);
+    final bans = await controller.fetchStreamBans(widget.streamId);
+    if (!mounted) return;
+    setState(() {
+      _viewers = viewers;
+      _bans = bans;
+      _loading = false;
+    });
+  }
+
+  Future<void> _run(Future<void> Function() action) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    await action();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.75,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      L.t('Stream moderation', ru: 'Модерация трансляции'),
+                      style: theme.textTheme.titleMedium,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: L.t('Refresh', ru: 'Обновить'),
+                    icon: const Icon(Icons.refresh),
+                    onPressed: _loading ? null : _load,
+                  ),
+                ],
+              ),
+            ),
+            if (_loading)
+              const Expanded(child: Center(child: CircularProgressIndicator()))
+            else
+              Expanded(
+                child: ListView(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                      child: Text(
+                        L.t(
+                          'Viewers (${_viewers.length})',
+                          ru: 'Зрители (${_viewers.length})',
+                        ),
+                        style: theme.textTheme.labelLarge,
+                      ),
+                    ),
+                    if (_viewers.isEmpty)
+                      ListTile(
+                        title: Text(
+                          L.t('Nobody is watching yet', ru: 'Пока никто не смотрит'),
+                        ),
+                      ),
+                    for (final viewer in _viewers)
+                      ListTile(
+                        leading: UserAvatar(
+                          name: viewer.user.displayName,
+                          seed: viewer.user.id,
+                          isVerified: viewer.user.isVerified,
+                          radius: 18,
+                        ),
+                        title: Text(viewer.user.displayName),
+                        subtitle: viewer.online
+                            ? Text(L.t('watching now', ru: 'смотрит сейчас'))
+                            : Text(L.t('offline', ru: 'не в сети')),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: L.t('Kick', ru: 'Выгнать'),
+                              icon: const Icon(Icons.logout),
+                              onPressed: _busy
+                                  ? null
+                                  : () => _run(
+                                        () => CommsScope.read(context)
+                                            .kickStreamViewer(
+                                          widget.streamId,
+                                          viewer.user.id,
+                                        ),
+                                      ),
+                            ),
+                            IconButton(
+                              tooltip: L.t(
+                                'Ban from channel',
+                                ru: 'Забанить на канале',
+                              ),
+                              icon: const Icon(Icons.block),
+                              onPressed: _busy
+                                  ? null
+                                  : () => _run(
+                                        () => CommsScope.read(context)
+                                            .banStreamViewer(
+                                          widget.streamId,
+                                          viewer.user.id,
+                                        ),
+                                      ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const Divider(height: 24),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                      child: Text(
+                        L.t(
+                          'Banned (${_bans.length})',
+                          ru: 'Забанены (${_bans.length})',
+                        ),
+                        style: theme.textTheme.labelLarge,
+                      ),
+                    ),
+                    if (_bans.isEmpty)
+                      ListTile(
+                        title: Text(L.t('No one is banned', ru: 'Никто не забанен')),
+                      ),
+                    for (final banned in _bans)
+                      ListTile(
+                        leading: UserAvatar(
+                          name: banned.displayName,
+                          seed: banned.id,
+                          radius: 18,
+                        ),
+                        title: Text(banned.displayName),
+                        trailing: TextButton(
+                          onPressed: _busy
+                              ? null
+                              : () => _run(
+                                    () => CommsScope.read(context)
+                                        .unbanStreamViewer(
+                                      widget.streamId,
+                                      banned.id,
+                                    ),
+                                  ),
+                          child: Text(L.t('Unban', ru: 'Разбанить')),
+                        ),
+                      ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+          ],
         ),
       ),
     );
