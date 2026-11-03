@@ -9,14 +9,14 @@
                     "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.2/commsuite.apk"
                 },
     "apkVersion":  "1.1.2",
-    "publishedAt":  1793694809544,
-    "installerSize":  23899648,
+    "publishedAt":  1793695223748,
+    "installerSize":  23895040,
     "linux":  "/update/commsuite-linux-1.1.2.tar.gz",
-    "installerSha256":  "5bc4c566c53d7ce4eb946889e291041ae9f133431059f42e84f635d202e14d17",
-    "linuxSha256":  "9b4b00c3652855fdb5249f78aa1c551087b7116714acdde3b1c5b576bdb76654",
+    "installerSha256":  "c33ee68cd0324f7540426c27b80d30dc43991112ee17dcd2aaa48d53ef768e11",
+    "linuxSha256":  "819cf5acc8b2ef9f6cab3743266aabca513ceb48f3ace9f2684f905f31ddf95d",
     "windowsVersion":  "1.1.2",
     "notes":  "Local password vault (AES-GCM, own passphrase) and in-app password change; fixes stream-teardown crash \u0027Call initialize before setting the stream\u0027 (issue #9).",
-    "apkSha256":  "daa2fea5f6b8db185d54b4fdce24d07025181591173c7f300cc9e0e99e3c6416",
-    "linuxSize":  21276421,
+    "apkSha256":  "8c89ad18f3ce8cf6c1614e4877ddcb7aad048876698ce15cc59f7a1a78b2e1f6",
+    "linuxSize":  21278012,
     "linuxVersion":  "1.1.2"
 }

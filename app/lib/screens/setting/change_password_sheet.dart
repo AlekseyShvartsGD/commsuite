@@ -41,6 +41,91 @@ class _ChangePasswordSheetState extends State<ChangePasswordSheet> {
     super.dispose();
   }
 
+  Future<void> _unlockVault() async {
+    final vault = PasswordVault.instance;
+    final passphrase = TextEditingController();
+    String? error;
+    bool busy = false;
+    final unlocked = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          Future<void> submit() async {
+            if (busy) return;
+            setDialogState(() {
+              busy = true;
+              error = null;
+            });
+            final ok = await vault.unlock(passphrase.text);
+            if (!dialogContext.mounted) return;
+            if (ok) {
+              Navigator.of(dialogContext).pop(true);
+            } else {
+              setDialogState(() {
+                busy = false;
+                error = L.t(
+                  'Wrong passphrase.',
+                  ru: 'Неверная кодовая фраза.',
+                );
+              });
+            }
+          }
+
+          return AlertDialog(
+            title: Text(
+              L.t('Unlock the password vault',
+                  ru: 'Разблокировать хранилище паролей'),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: passphrase,
+                  obscureText: true,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText:
+                        L.t('Vault passphrase', ru: 'Кодовая фраза хранилища'),
+                    border: const OutlineInputBorder(),
+                  ),
+                  onSubmitted: (_) => submit(),
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    error!,
+                    style: TextStyle(
+                      color: Theme.of(dialogContext).colorScheme.error,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed:
+                    busy ? null : () => Navigator.of(dialogContext).pop(false),
+                child: Text(L.t('Cancel', ru: 'Отмена')),
+              ),
+              FilledButton(
+                onPressed: busy ? null : submit,
+                child: busy
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(L.t('Unlock', ru: 'Разблокировать')),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    passphrase.dispose();
+    if (unlocked == true && mounted) setState(() {});
+  }
+
   Future<void> _submit() async {
     final current = _current.text;
     final next = _next.text;
@@ -121,7 +206,8 @@ class _ChangePasswordSheetState extends State<ChangePasswordSheet> {
     final insets = MediaQuery.of(context).viewInsets.bottom;
     final vault = PasswordVault.instance;
     return SafeArea(
-      child: SizedboxHeight(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.85,
         child: Column(
           children: [
             Padding(
@@ -228,30 +314,39 @@ class _ChangePasswordSheetState extends State<ChangePasswordSheet> {
                   ],
                   if (_hasVault) ...[
                     const SizedBox(height: 8),
-                    CheckboxListTile(
-                      value: _saveToVault && vault.unlocked,
-                      onChanged: vault.unlocked
-                          ? (value) =>
-                              setState(() => _saveToVault = value ?? false)
-                          : null,
-                      contentPadding: EdgeInsets.zero,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      title: Text(
-                        L.t('Save the new password in the local vault',
-                            ru: 'Сохранить новый пароль в локальном хранилище'),
-                      ),
-                      subtitle: vault.unlocked
-                          ? null
-                          : Text(
-                              L.t(
-                                'Unlock the password vault first (Settings → '
-                                'Security → Password vault).',
-                                ru: 'Сначала разблокируйте хранилище паролей '
-                                    '(Настройки → Безопасность → Хранилище '
-                                    'паролей).',
-                              ),
+                    if (!vault.unlocked)
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.lock_outline),
+                          title: Text(
+                            L.t('Vault is locked',
+                                ru: 'Хранилище заблокировано'),
+                          ),
+                          subtitle: Text(
+                            L.t(
+                              'Unlock it to save the new password on this device.',
+                              ru: 'Разблокируйте его, чтобы сохранить новый '
+                                  'пароль на этом устройстве.',
                             ),
-                    ),
+                          ),
+                          trailing: TextButton(
+                            onPressed: _unlockVault,
+                            child: Text(L.t('Unlock', ru: 'Разблокировать')),
+                          ),
+                        ),
+                      ),
+                    if (vault.unlocked)
+                      CheckboxListTile(
+                        value: _saveToVault,
+                        onChanged: (value) =>
+                            setState(() => _saveToVault = value ?? false),
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        title: Text(
+                          L.t('Save the new password in the local vault',
+                              ru: 'Сохранить новый пароль в локальном хранилище'),
+                        ),
+                      ),
                   ],
                   const SizedBox(height: 16),
                   FilledButton.icon(
@@ -273,18 +368,4 @@ class _ChangePasswordSheetState extends State<ChangePasswordSheet> {
       ),
     );
   }
-}
-
-/// Keeps the sheet at a comfortable height without duplicating the sizing
-/// expression from the other settings sheets.
-class SizedboxHeight extends StatelessWidget {
-  const SizedboxHeight({super.key, required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-        height: MediaQuery.of(context).size.height * 0.85,
-        child: child,
-      );
 }
