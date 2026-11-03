@@ -73,6 +73,21 @@ class _AuthScreenState extends State<AuthScreen>
         _userController.text.trim(),
         _passController.text,
       );
+      if (!mounted) return;
+      if (err == null && controller.twoFactorPending) {
+        setState(() => _busy = false);
+        final code = await _askTwoFactorCode();
+        if (!mounted) return;
+        if (code == null) {
+          controller.cancelTwoFactor();
+          return;
+        }
+        setState(() {
+          _busy = true;
+          _error = null;
+        });
+        err = await controller.verifyTwoFactor(code);
+      }
     } else {
       err = await controller.register(
         _registerUserController.text.trim(),
@@ -89,6 +104,66 @@ class _AuthScreenState extends State<AuthScreen>
     if (err == null && widget.addingAccount && mounted) {
       Navigator.of(context).pop(true);
     }
+  }
+
+  Future<String?> _askTwoFactorCode() async {
+    final codeController = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        void submit() {
+          final value = codeController.text.trim();
+          if (value.isEmpty) return;
+          Navigator.of(dialogContext).pop(value);
+        }
+
+        return AlertDialog(
+          title: Text(
+            L.t('Two-factor authentication', ru: 'Двухфакторная аутентификация'),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                L.t(
+                  'Enter the 6-digit code from your authenticator app, or one '
+                  'of your recovery codes.',
+                  ru:
+                      'Введите 6-значный код из приложения-аутентификатора или '
+                      'один из кодов восстановления.',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: codeController,
+                autofocus: true,
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(
+                  labelText: L.t('Code', ru: 'Код'),
+                  hintText: '123456 / XXXX-XXXX',
+                  border: const OutlineInputBorder(),
+                ),
+                onSubmitted: (_) => submit(),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(L.t('Cancel', ru: 'Отмена')),
+            ),
+            FilledButton(
+              onPressed: submit,
+              child: Text(L.t('Verify', ru: 'Проверить')),
+            ),
+          ],
+        );
+      },
+    );
+    codeController.dispose();
+    return result;
   }
 
   Future<void> _saveServer() async {

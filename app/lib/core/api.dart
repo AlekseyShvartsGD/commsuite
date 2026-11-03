@@ -22,6 +22,35 @@ class AuthResult {
   AuthResult(this.token, this.user);
 }
 
+/// One step of sign-in: either a ready session, or a short-lived challenge
+/// that must be exchanged for one with a TOTP or recovery code.
+class LoginResult {
+  final AuthResult? session;
+  final String? challenge;
+
+  const LoginResult.session(this.session) : challenge = null;
+  const LoginResult.challenge(this.challenge) : session = null;
+
+  bool get requiresTwoFactor => challenge != null;
+}
+
+class TwoFactorSetup {
+  final String secret;
+  final String otpauthUrl;
+
+  const TwoFactorSetup({required this.secret, required this.otpauthUrl});
+}
+
+class TwoFactorStatus {
+  final bool enabled;
+  final int remainingRecoveryCodes;
+
+  const TwoFactorStatus({
+    required this.enabled,
+    required this.remainingRecoveryCodes,
+  });
+}
+
 class Api {
   static Future<Map<String, dynamic>> _request(
     String method,
@@ -84,12 +113,66 @@ class Api {
     return AuthResult(data['token'] as String, User.fromJson(data['user']));
   }
 
-  static Future<AuthResult> login({required String username, required String password}) async {
+  static Future<LoginResult> login({
+    required String username,
+    required String password,
+  }) async {
     final data = await _request('POST', '/login', body: {
       'username': username,
       'password': password,
     });
+    if (data['twoFactorRequired'] == true) {
+      return LoginResult.challenge(data['challenge'] as String);
+    }
+    return LoginResult.session(
+      AuthResult(data['token'] as String, User.fromJson(data['user'])),
+    );
+  }
+
+  /// Exchanges the short-lived challenge from [login] plus a TOTP or recovery
+  /// code for a real session token.
+  static Future<AuthResult> loginTwoFactor({
+    required String challenge,
+    required String code,
+  }) async {
+    final data = await _request('POST', '/login/2fa', body: {
+      'challenge': challenge,
+      'code': code,
+    });
     return AuthResult(data['token'] as String, User.fromJson(data['user']));
+  }
+
+  static Future<TwoFactorStatus> twoFactorStatus(String token) async {
+    final data = await _request('GET', '/2fa/status', token: token);
+    return TwoFactorStatus(
+      enabled: data['enabled'] as bool? ?? false,
+      remainingRecoveryCodes:
+          (data['remainingRecoveryCodes'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  static Future<TwoFactorSetup> startTwoFactorSetup(String token) async {
+    final data = await _request('POST', '/2fa/setup', token: token);
+    return TwoFactorSetup(
+      secret: data['secret'] as String,
+      otpauthUrl: data['otpauthUrl'] as String,
+    );
+  }
+
+  static Future<List<String>> enableTwoFactor(
+      String token, String code) async {
+    final data = await _request('POST', '/2fa/enable',
+        body: {'code': code}, token: token);
+    return (data['recoveryCodes'] as List).cast<String>();
+  }
+
+  static Future<void> disableTwoFactor(
+    String token, {
+    required String password,
+    required String code,
+  }) async {
+    await _request('POST', '/2fa/disable',
+        body: {'password': password, 'code': code}, token: token);
   }
 
   static Future<User> me(String token) async {

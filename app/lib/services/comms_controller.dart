@@ -26,6 +26,11 @@ class CommsController extends ChangeNotifier {
 
   User? user;
   String? token;
+  String? _pendingTwoFactorChallenge;
+
+  /// True after a password check succeeded but the TOTP/recovery step has not
+  /// been completed yet. Cleared on success or when the user cancels.
+  bool get twoFactorPending => _pendingTwoFactorChallenge != null;
   bool busy = true;
 
   final List<Conversation> conversations = [];
@@ -349,7 +354,98 @@ class CommsController extends ChangeNotifier {
   Future<String?> login(String username, String password) async {
     try {
       final res = await Api.login(username: username, password: password);
+      if (res.requiresTwoFactor) {
+        _pendingTwoFactorChallenge = res.challenge;
+        notifyListeners();
+        return null;
+      }
+      await _applyAuth(res.session!.token, res.session!.user);
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } catch (_) {
+      return L.t(
+        'Could not reach the server.',
+        ru: 'Не удалось связаться с сервером.',
+      );
+    }
+  }
+
+  /// Completes a two-step sign-in started by [login].
+  Future<String?> verifyTwoFactor(String code) async {
+    final challenge = _pendingTwoFactorChallenge;
+    if (challenge == null) {
+      return L.t(
+        'Sign-in expired. Enter your password again.',
+        ru: 'Время входа истекло. Введите пароль снова.',
+      );
+    }
+    try {
+      final res = await Api.loginTwoFactor(
+        challenge: challenge,
+        code: code.trim(),
+      );
+      _pendingTwoFactorChallenge = null;
       await _applyAuth(res.token, res.user);
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } catch (_) {
+      return L.t(
+        'Could not reach the server.',
+        ru: 'Не удалось связаться с сервером.',
+      );
+    }
+  }
+
+  void cancelTwoFactor() {
+    if (_pendingTwoFactorChallenge == null) return;
+    _pendingTwoFactorChallenge = null;
+    notifyListeners();
+  }
+
+  Future<TwoFactorStatus?> loadTwoFactorStatus() async {
+    final t = token;
+    if (t == null) return null;
+    try {
+      return await Api.twoFactorStatus(t);
+    } on ApiException catch (e) {
+      showSnack(e.message);
+      return null;
+    }
+  }
+
+  Future<TwoFactorSetup?> beginTwoFactorSetup() async {
+    final t = token;
+    if (t == null) return null;
+    try {
+      return await Api.startTwoFactorSetup(t);
+    } on ApiException catch (e) {
+      showSnack(e.message);
+      return null;
+    }
+  }
+
+  /// Returns the one-time recovery codes, or null when the code was rejected.
+  Future<List<String>?> confirmTwoFactorSetup(String code) async {
+    final t = token;
+    if (t == null) return null;
+    try {
+      return await Api.enableTwoFactor(t, code.trim());
+    } on ApiException catch (e) {
+      showSnack(e.message);
+      return null;
+    }
+  }
+
+  /// Returns an error message, or null when two-factor authentication is off.
+  Future<String?> disableTwoFactor(String password, String code) async {
+    final t = token;
+    if (t == null) {
+      return L.t('Not signed in.', ru: 'Вы не вошли в систему.');
+    }
+    try {
+      await Api.disableTwoFactor(t, password: password, code: code.trim());
       return null;
     } on ApiException catch (e) {
       return e.message;
@@ -497,6 +593,7 @@ class CommsController extends ChangeNotifier {
   }
 
   void _resetLocalState() {
+    _pendingTwoFactorChallenge = null;
     conversations.clear();
     _messages.clear();
     _pinned.clear();

@@ -5,6 +5,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import WebSocket from 'ws';
+import { generateTotp } from '../totp.js';
 
 const PORT = 3457;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -103,6 +104,115 @@ try {
   check('me', me.status === 200 && me.json.user.username === `alice${suffix}`);
   const noAuth = await api('/api/users');
   check('unauthorized blocked', noAuth.status === 401);
+
+  console.log('two-factor authentication');
+  const status0 = await api('/api/2fa/status', {}, tokenA);
+  check('2FA starts disabled', status0.status === 200 && status0.json.enabled === false);
+
+  const noSetup = await api('/api/2fa/enable', {
+    method: 'POST',
+    body: { code: '000000' },
+  }, tokenA);
+  check('2FA cannot be enabled before setup', noSetup.status === 400);
+
+  const setup = await api('/api/2fa/setup', { method: 'POST' }, tokenA);
+  check(
+    '2FA setup returns a secret and otpauth url',
+    setup.status === 200 &&
+      !!setup.json.secret &&
+      String(setup.json.otpauthUrl).startsWith('otpauth://totp/')
+  );
+  const totpSecret = setup.json.secret;
+
+  const badEnable = await api('/api/2fa/enable', {
+    method: 'POST',
+    body: { code: '000000' },
+  }, tokenA);
+  check('2FA enable rejects a wrong code', badEnable.status === 401);
+
+  const enable = await api('/api/2fa/enable', {
+    method: 'POST',
+    body: { code: generateTotp(totpSecret) },
+  }, tokenA);
+  check(
+    '2FA enable returns ten recovery codes',
+    enable.status === 200 && enable.json.recoveryCodes?.length === 10,
+    JSON.stringify(enable.json)
+  );
+  const recoveryCodes = enable.json.recoveryCodes;
+
+  const status1 = await api('/api/2fa/status', {}, tokenA);
+  check(
+    '2FA status enabled with ten unused codes',
+    status1.json.enabled === true && status1.json.remainingRecoveryCodes === 10
+  );
+
+  const login2fa = await api('/api/login', {
+    method: 'POST',
+    body: { username: `alice${suffix}`, password: 'secret1' },
+  });
+  check(
+    'login now requires a second factor',
+    login2fa.status === 200 &&
+      login2fa.json.twoFactorRequired === true &&
+      !login2fa.json.token
+  );
+
+  const wrong2fa = await api('/api/login/2fa', {
+    method: 'POST',
+    body: { challenge: login2fa.json.challenge, code: '000000' },
+  });
+  check('wrong 2FA code rejected', wrong2fa.status === 401);
+
+  const verified = await api('/api/login/2fa', {
+    method: 'POST',
+    body: { challenge: login2fa.json.challenge, code: generateTotp(totpSecret) },
+  });
+  check('TOTP completes sign-in', verified.status === 200 && !!verified.json.token);
+
+  const recoveryLogin = await api('/api/login', {
+    method: 'POST',
+    body: { username: `alice${suffix}`, password: 'secret1' },
+  });
+  const recoveryVerified = await api('/api/login/2fa', {
+    method: 'POST',
+    body: { challenge: recoveryLogin.json.challenge, code: recoveryCodes[0] },
+  });
+  check(
+    'recovery code completes sign-in once',
+    recoveryVerified.status === 200 && recoveryVerified.json.recoveryCodeUsed === true
+  );
+
+  const reuseLogin = await api('/api/login', {
+    method: 'POST',
+    body: { username: `alice${suffix}`, password: 'secret1' },
+  });
+  const reuse = await api('/api/login/2fa', {
+    method: 'POST',
+    body: { challenge: reuseLogin.json.challenge, code: recoveryCodes[0] },
+  });
+  check('used recovery code cannot be reused', reuse.status === 401);
+
+  const status2 = await api('/api/2fa/status', {}, tokenA);
+  check('recovery code counter decreased', status2.json.remainingRecoveryCodes === 9);
+
+  const disableBad = await api('/api/2fa/disable', {
+    method: 'POST',
+    body: { password: 'wrong', code: generateTotp(totpSecret) },
+  }, tokenA);
+  check('2FA disable checks the password', disableBad.status === 401);
+
+  const disable = await api('/api/2fa/disable', {
+    method: 'POST',
+    body: { password: 'secret1', code: generateTotp(totpSecret) },
+  }, tokenA);
+  check('2FA disable succeeds', disable.status === 200 && disable.json.ok === true);
+
+  const loginPlain = await api('/api/login', {
+    method: 'POST',
+    body: { username: `alice${suffix}`, password: 'secret1' },
+  });
+  check('login is single-factor again', loginPlain.status === 200 && !!loginPlain.json.token);
 
   console.log('users & conversations');
   const users = await api(`/api/users?query=bob${suffix}`, {}, tokenA);

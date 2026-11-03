@@ -25,9 +25,24 @@ CREATE TABLE IF NOT EXISTS users (
   role          TEXT NOT NULL DEFAULT 'user',
   is_verified   INTEGER NOT NULL DEFAULT 0,
   hidden        INTEGER NOT NULL DEFAULT 0,
+  totp_secret   TEXT,
+  totp_enabled  INTEGER NOT NULL DEFAULT 0,
   password_hash TEXT NOT NULL,
   created_at    INTEGER NOT NULL
 );
+
+-- Single-use recovery codes for two-factor authentication. Only bcrypt hashes
+-- are stored; used rows are kept so the app can report how many remain.
+CREATE TABLE IF NOT EXISTS totp_recovery_codes (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  code_hash  TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  used_at    INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_totp_codes_user
+  ON totp_recovery_codes(user_id, used_at);
 
 CREATE TABLE IF NOT EXISTS blocks (
   blocked_by TEXT NOT NULL,
@@ -222,6 +237,14 @@ if (!userCols.includes('is_verified')) {
 // Demo/test accounts stay out of the people directory but keep their history.
 if (!userCols.includes('hidden')) {
   db.exec('ALTER TABLE users ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
+}
+// Two-factor authentication (TOTP). totp_secret is also written during setup
+// and only honoured once totp_enabled is 1.
+if (!userCols.includes('totp_secret')) {
+  db.exec('ALTER TABLE users ADD COLUMN totp_secret TEXT');
+}
+if (!userCols.includes('totp_enabled')) {
+  db.exec('ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0');
 }
 const gameCols = db.prepare('PRAGMA table_info(games)').all().map((c) => c.name);
 if (!gameCols.includes('guess_count')) {

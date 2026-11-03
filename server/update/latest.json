@@ -1,22 +1,22 @@
 {
     "installer":  "/update/commsuite-setup.exe",
-    "version":  "1.1.0",
+    "version":  "1.1.1",
     "apk":  "/update/commsuite.apk",
-    "apkSize":  97463727,
+    "apkSize":  97841015,
     "mirrors":  {
-                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.0/commsuite-linux-1.1.0.tar.gz",
-                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.0/commsuite-setup.exe",
-                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.0/commsuite.apk"
+                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.1/commsuite-linux-1.1.1.tar.gz",
+                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.1/commsuite-setup.exe",
+                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.1/commsuite.apk"
                 },
-    "apkVersion":  "1.1.0",
-    "publishedAt":  1793612851693,
-    "installerSize":  23790080,
-    "linux":  "/update/commsuite-linux-1.1.0.tar.gz",
-    "installerSha256":  "663510fef74cb5e2787812a2c1db34899966ce3f812e1e9581b7e432ddfad892",
-    "linuxSha256":  "2b807b31251c452e3eed3a67522e72a6320e31d1043b101b81a9c8e4e4b0d0d9",
-    "windowsVersion":  "1.1.0",
-    "notes":  "Stream tab: Twitch-like live directory with channel profiles (title, description, game autocomplete), public/unlisted/contacts visibility and multi-viewer broadcasts for up to 8 viewers. Dedicated per-stream chat, viewer list, kick/ban, channel moderators and slow mode. Media stays relayed through the server TURN relay (never peer-to-peer). Demo and smoke-test accounts are now hidden from the people directory.",
-    "apkSha256":  "e513c5cc4c05971246887eb88287af4f935d0e1f0f3c044a8a72ed2d4e1c2183",
-    "linuxSize":  21162475,
-    "linuxVersion":  "1.1.0"
+    "apkVersion":  "1.1.1",
+    "publishedAt":  1793693737158,
+    "installerSize":  23833088,
+    "linux":  "/update/commsuite-linux-1.1.1.tar.gz",
+    "installerSha256":  "bd68edc8bfd84631a3b1ae53e3a43b6b25c8f2937c0fb8e1a0e1aabd4e33ab60",
+    "linuxSha256":  "7bf70f932b866780d3271c9fc98101a9399a84c13b4e7d686127ce72271f9cfa",
+    "windowsVersion":  "1.1.1",
+    "notes":  "Two-factor authentication: open Settings \u003e Security, scan the QR code with an authenticator app (or enter the key manually), then confirm a 6-digit code. Sign-in now asks for the code after your password, and you receive ten single-use recovery codes shown only once. Turning 2FA off requires your password plus a current authenticator or recovery code. Nobody can recover your password from the server; existing accounts and sessions keep working unchanged until 2FA is enabled.",
+    "apkSha256":  "f4a59217462bf146b2ed12e46d89da6ba47d36476ce25aab1e4765e80b5dd62c",
+    "linuxSize":  21209786,
+    "linuxVersion":  "1.1.1"
 }

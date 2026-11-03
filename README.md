@@ -8,6 +8,7 @@ Self-hosted chat suite for **Android and Windows** (Flutter) with a custom Node.
 - Local file manager (browse, search, rename, delete, copy/cut/paste, new folder, properties)
 - Web browser (tabbed InAppWebView with bookmarks)
 - Presence (online/offline) and a persistent accounts database
+- Two-factor authentication (TOTP) with QR setup and ten single-use recovery codes
 
 ```
 commsuite/
@@ -27,7 +28,7 @@ npm start      # listens on 0.0.0.0:3000
 
 - HTTP API on port `3000` (`/api/...`), WebSocket signaling on `/ws?token=<jwt>`.
 - Data is stored in `server/data/` (SQLite DB `app.db`, uploads, JWT secret). This folder is git-ignored and created on first start.
-- Smoke test (starts the server on port 3457 against a throwaway data directory and runs 61 assertions):
+- Smoke test (starts the server on port 3457 against a throwaway data directory and runs 76 assertions):
 
 ```bash
 npm run smoke
@@ -35,8 +36,9 @@ npm run smoke
 
 ### API overview
 
-- `POST /api/auth/register` · `POST /api/auth/login` → `{ token, user }`
-- `GET /api/auth/me` (Bearer token)
+- `POST /api/register` · `POST /api/login` → `{ token, user }`, or `{ twoFactorRequired, challenge }` when TOTP is on · `POST /api/login/2fa` (challenge + TOTP or recovery code) → `{ token, user }`
+- `GET /api/2fa/status` · `POST /api/2fa/setup` (secret + `otpauth://` URL) · `POST /api/2fa/enable` (code → ten recovery codes, shown once) · `POST /api/2fa/disable` (password + code)
+- `GET /api/me` (Bearer token)
 - `GET /api/users/search?q=` · `POST /api/conversations` (idempotent 1:1 lookup)
 - `GET /api/conversations` · `GET /api/conversations/:id/messages?limit=&before=`
 - `POST /api/conversations/:id/messages` (`kind: text|file`)
@@ -69,7 +71,7 @@ flutter run -d <android-device>   # phone/emulator
 | Files | Local storage browser (Android `/storage/emulated/0`, Windows drive roots), full file operations |
 | Browse | Tabbed web browser, URL bar, reload/back/forward, persisted bookmarks |
 | Stream | Live directory, channel profile (title/description/game), broadcast room with chat and moderation |
-| Settings | Your profile, connection status, server URL (live reconnect), sign out |
+| Settings | Your profile, security (two-factor auth), connection status, server URL (live reconnect), sign out |
 
 ### Notes / platform specifics
 

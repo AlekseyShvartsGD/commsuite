@@ -17,6 +17,7 @@ import '../mod/mod_verified_screen.dart';
 import '../support/support_screen.dart';
 import '../dev/developer_tools_screen.dart';
 import '../account/account_switcher.dart';
+import 'two_factor_sheet.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -351,6 +352,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onPressed: _saveBio,
               icon: const Icon(Icons.save_outlined),
               label: Text(L.t('Save bio', ru: 'Сохранить')),
+            ),
+            const SizedBox(height: 24),
+            Text(L.t('Security', ru: 'Безопасность'),
+                style: theme.textTheme.titleSmall),
+            const SizedBox(height: 8),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.shield_outlined),
+                title: Text(
+                  L.t('Two-factor authentication',
+                      ru: 'Двухфакторная аутентификация'),
+                ),
+                subtitle: Text(
+                  L.t(
+                    'Protect sign-in with an authenticator app and recovery codes',
+                    ru: 'Защитите вход приложением-аутентификатором и кодами '
+                        'восстановления',
+                  ),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  showDragHandle: true,
+                  builder: (_) => const TwoFactorSheet(),
+                ),
+              ),
             ),
             if (user.isMod) ...[
               const SizedBox(height: 24),
