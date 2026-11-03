@@ -9,6 +9,7 @@ Self-hosted chat suite for **Android and Windows** (Flutter) with a custom Node.
 - Web browser (tabbed InAppWebView with bookmarks)
 - Presence (online/offline) and a persistent accounts database
 - Two-factor authentication (TOTP) with QR setup and ten single-use recovery codes
+- Local encrypted password vault (AES-GCM, unlocked by its own passphrase) and in-app password change
 
 ```
 commsuite/
@@ -28,7 +29,7 @@ npm start      # listens on 0.0.0.0:3000
 
 - HTTP API on port `3000` (`/api/...`), WebSocket signaling on `/ws?token=<jwt>`.
 - Data is stored in `server/data/` (SQLite DB `app.db`, uploads, JWT secret). This folder is git-ignored and created on first start.
-- Smoke test (starts the server on port 3457 against a throwaway data directory and runs 76 assertions):
+- Smoke test (starts the server on port 3457 against a throwaway data directory and runs 83 assertions):
 
 ```bash
 npm run smoke
@@ -38,6 +39,7 @@ npm run smoke
 
 - `POST /api/register` · `POST /api/login` → `{ token, user }`, or `{ twoFactorRequired, challenge }` when TOTP is on · `POST /api/login/2fa` (challenge + TOTP or recovery code) → `{ token, user }`
 - `GET /api/2fa/status` · `POST /api/2fa/setup` (secret + `otpauth://` URL) · `POST /api/2fa/enable` (code → ten recovery codes, shown once) · `POST /api/2fa/disable` (password + code)
+- `POST /api/password` (current password + new password; stored as a bcrypt hash, never recoverable from the server)
 - `GET /api/me` (Bearer token)
 - `GET /api/users/search?q=` · `POST /api/conversations` (idempotent 1:1 lookup)
 - `GET /api/conversations` · `GET /api/conversations/:id/messages?limit=&before=`
@@ -71,7 +73,7 @@ flutter run -d <android-device>   # phone/emulator
 | Files | Local storage browser (Android `/storage/emulated/0`, Windows drive roots), full file operations |
 | Browse | Tabbed web browser, URL bar, reload/back/forward, persisted bookmarks |
 | Stream | Live directory, channel profile (title/description/game), broadcast room with chat and moderation |
-| Settings | Your profile, security (two-factor auth), connection status, server URL (live reconnect), sign out |
+| Settings | Your profile, security (two-factor auth, encrypted password vault, password change), connection status, server URL (live reconnect), sign out |
 
 ### Notes / platform specifics
 
@@ -126,6 +128,27 @@ zombie streams. Signalling is a single authenticated WebSocket message:
 
 Demo and smoke-test accounts are hidden from the people directory
 (`users.hidden = 1`) but keep their message history.
+
+### Passwords, 2FA and the local vault
+
+- **Two-factor authentication** — **Settings → Security → Two-factor
+  authentication** shows a QR code (and the manual base32 key) for any TOTP app.
+  After confirming a 6-digit code you receive ten single-use recovery codes,
+  shown once. Turning 2FA off requires the account password plus a current
+  authenticator or recovery code.
+- **Change password** — **Settings → Security → Change password** verifies the
+  current password and sends `POST /api/password`; the server stores only a
+  bcrypt hash. If you also want the new password saved locally, tick “Save the
+  new password in the local vault” (the vault must be unlocked first).
+- **Password vault** — **Settings → Security → Password vault** keeps records
+  (`title`, username, password, note) in `SharedPreferences`, encrypted with
+  AES-GCM. The key is derived from a dedicated vault passphrase via
+  PBKDF2-HMAC-SHA256 (100,000 iterations, random 16-byte salt) and exists in
+  memory only while the vault is unlocked. The passphrase is independent of the
+  account password and the Enigma app passcode, so changing either does not
+  break saved records. Nothing is uploaded to the server; forgetting the vault
+  passphrase means the records cannot be recovered, and deleting the vault
+  erases them permanently.
 
 ### Calls on UDP-blocked networks (TURN relay)
 

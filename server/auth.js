@@ -209,6 +209,28 @@ router.post('/login/2fa', (req, res) => {
   });
 });
 
+// ---- account password -----------------------------------------------------
+
+router.post('/password', authMiddleware, (req, res) => {
+  const current = String(req.body?.currentPassword || '');
+  const next = String(req.body?.newPassword || '');
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.sub);
+  if (!row) return res.status(401).json({ error: 'unknown user' });
+  if (row.role === 'bot')
+    return res.status(403).json({ error: 'bot accounts have no password' });
+  if (next.length < 6)
+    return res.status(400).json({ error: 'password must be at least 6 characters' });
+  if (next === current)
+    return res.status(400).json({ error: 'new password must be different' });
+  if (!bcrypt.compareSync(current, row.password_hash))
+    return res.status(401).json({ error: 'current password is incorrect' });
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(
+    bcrypt.hashSync(next, 10),
+    row.id
+  );
+  res.json({ ok: true });
+});
+
 // ---- two-factor authentication management ---------------------------------
 
 router.get('/2fa/status', authMiddleware, (req, res) => {

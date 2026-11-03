@@ -17,6 +17,8 @@ import '../mod/mod_verified_screen.dart';
 import '../support/support_screen.dart';
 import '../dev/developer_tools_screen.dart';
 import '../account/account_switcher.dart';
+import 'change_password_sheet.dart';
+import 'password_vault_sheet.dart';
 import 'two_factor_sheet.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -222,6 +224,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await showPasscodeSetupDialog(context);
   }
 
+  Future<void> _openPasswordVault() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => const PasswordVaultSheet(),
+    );
+  }
+
+  Future<void> _openChangePassword() async {
+    final changed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => const ChangePasswordSheet(),
+    );
+    if (changed == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(L.t('Password changed', ru: 'Пароль изменён')),
+        ),
+      );
+    }
+  }
+
   Future<void> _logout() async {
     final controller = CommsScope.read(context);
     final username = controller.user?.username;
@@ -378,6 +405,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   showDragHandle: true,
                   builder: (_) => const TwoFactorSheet(),
                 ),
+              ),
+            ),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.password_outlined),
+                title: Text(L.t('Password vault', ru: 'Хранилище паролей')),
+                subtitle: Text(
+                  L.t(
+                    'Keep passwords encrypted on this device only',
+                    ru: 'Храните пароли в зашифрованном виде только на этом '
+                        'устройстве',
+                  ),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _openPasswordVault,
+              ),
+            ),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.lock_reset_outlined),
+                title: Text(L.t('Change password', ru: 'Сменить пароль')),
+                subtitle: Text(
+                  L.t(
+                    'Update the password you sign in with',
+                    ru: 'Обновите пароль, с которым вы входите',
+                  ),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _openChangePassword,
               ),
             ),
             if (user.isMod) ...[

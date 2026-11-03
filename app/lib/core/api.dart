@@ -175,6 +175,17 @@ class Api {
         body: {'password': password, 'code': code}, token: token);
   }
 
+  static Future<void> changePassword(
+    String token, {
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _request('POST', '/password', body: {
+      'currentPassword': currentPassword,
+      'newPassword': newPassword,
+    }, token: token);
+  }
+
   static Future<User> me(String token) async {
     final data = await _request('GET', '/me', token: token);
     return User.fromJson(data['user']);

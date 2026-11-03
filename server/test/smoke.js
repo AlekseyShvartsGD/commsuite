@@ -214,6 +214,49 @@ try {
   });
   check('login is single-factor again', loginPlain.status === 200 && !!loginPlain.json.token);
 
+  console.log('password change');
+  const wrongCurrent = await api('/api/password', {
+    method: 'POST',
+    body: { currentPassword: 'wrong', newPassword: 'secret2' },
+  }, tokenA);
+  check('password change rejects a wrong current password', wrongCurrent.status === 401);
+
+  const shortNew = await api('/api/password', {
+    method: 'POST',
+    body: { currentPassword: 'secret1', newPassword: '123' },
+  }, tokenA);
+  check('password change rejects a short new password', shortNew.status === 400);
+
+  const sameNew = await api('/api/password', {
+    method: 'POST',
+    body: { currentPassword: 'secret1', newPassword: 'secret1' },
+  }, tokenA);
+  check('password change rejects reusing the current password', sameNew.status === 400);
+
+  const changed = await api('/api/password', {
+    method: 'POST',
+    body: { currentPassword: 'secret1', newPassword: 'secret2' },
+  }, tokenA);
+  check('password change succeeds', changed.status === 200 && changed.json.ok === true);
+
+  const oldLogin = await api('/api/login', {
+    method: 'POST',
+    body: { username: `alice${suffix}`, password: 'secret1' },
+  });
+  check('the old password no longer signs in', oldLogin.status === 401);
+
+  const newLogin = await api('/api/login', {
+    method: 'POST',
+    body: { username: `alice${suffix}`, password: 'secret2' },
+  });
+  check('the new password signs in', newLogin.status === 200 && !!newLogin.json.token);
+
+  const changedBack = await api('/api/password', {
+    method: 'POST',
+    body: { currentPassword: 'secret2', newPassword: 'secret1' },
+  }, newLogin.json.token);
+  check('password can be changed back', changedBack.status === 200 && changedBack.json.ok === true);
+
   console.log('users & conversations');
   const users = await api(`/api/users?query=bob${suffix}`, {}, tokenA);
   check('search users', users.status === 200 && users.json.users.length === 1);

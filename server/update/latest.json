@@ -1,22 +1,22 @@
 {
     "installer":  "/update/commsuite-setup.exe",
-    "version":  "1.1.1",
+    "version":  "1.1.2",
     "apk":  "/update/commsuite.apk",
-    "apkSize":  97841015,
+    "apkSize":  98251211,
     "mirrors":  {
-                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.1/commsuite-linux-1.1.1.tar.gz",
-                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.1/commsuite-setup.exe",
-                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.1/commsuite.apk"
+                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.2/commsuite-linux-1.1.2.tar.gz",
+                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.2/commsuite-setup.exe",
+                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.2/commsuite.apk"
                 },
-    "apkVersion":  "1.1.1",
-    "publishedAt":  1793693737158,
-    "installerSize":  23833088,
-    "linux":  "/update/commsuite-linux-1.1.1.tar.gz",
-    "installerSha256":  "bd68edc8bfd84631a3b1ae53e3a43b6b25c8f2937c0fb8e1a0e1aabd4e33ab60",
-    "linuxSha256":  "7bf70f932b866780d3271c9fc98101a9399a84c13b4e7d686127ce72271f9cfa",
-    "windowsVersion":  "1.1.1",
-    "notes":  "Two-factor authentication: open Settings \u003e Security, scan the QR code with an authenticator app (or enter the key manually), then confirm a 6-digit code. Sign-in now asks for the code after your password, and you receive ten single-use recovery codes shown only once. Turning 2FA off requires your password plus a current authenticator or recovery code. Nobody can recover your password from the server; existing accounts and sessions keep working unchanged until 2FA is enabled.",
-    "apkSha256":  "f4a59217462bf146b2ed12e46d89da6ba47d36476ce25aab1e4765e80b5dd62c",
-    "linuxSize":  21209786,
-    "linuxVersion":  "1.1.1"
+    "apkVersion":  "1.1.2",
+    "publishedAt":  1793694809544,
+    "installerSize":  23899648,
+    "linux":  "/update/commsuite-linux-1.1.2.tar.gz",
+    "installerSha256":  "5bc4c566c53d7ce4eb946889e291041ae9f133431059f42e84f635d202e14d17",
+    "linuxSha256":  "9b4b00c3652855fdb5249f78aa1c551087b7116714acdde3b1c5b576bdb76654",
+    "windowsVersion":  "1.1.2",
+    "notes":  "Local password vault (AES-GCM, own passphrase) and in-app password change; fixes stream-teardown crash \u0027Call initialize before setting the stream\u0027 (issue #9).",
+    "apkSha256":  "daa2fea5f6b8db185d54b4fdce24d07025181591173c7f300cc9e0e99e3c6416",
+    "linuxSize":  21276421,
+    "linuxVersion":  "1.1.2"
 }

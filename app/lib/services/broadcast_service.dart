@@ -353,8 +353,12 @@ class BroadcastService {
     }
     _peers.clear();
     _orphanIce.clear();
-    localRenderer.srcObject = null;
-    remoteRenderer.srcObject = null;
+    // stop() also runs when no broadcast was ever started (logout, account
+    // switch, a stream that failed before the first frame). Setting srcObject
+    // on an uninitialized renderer throws "Call initialize before setting the
+    // stream", so only clear the ones that were actually initialized.
+    if (_localRendererReady) localRenderer.srcObject = null;
+    if (_remoteRendererReady) remoteRenderer.srcObject = null;
     final stream = _localStream;
     _localStream = null;
     if (stream != null) {

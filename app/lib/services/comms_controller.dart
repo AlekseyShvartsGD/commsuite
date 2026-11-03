@@ -457,6 +457,32 @@ class CommsController extends ChangeNotifier {
     }
   }
 
+  /// Returns an error message, or null when the password was changed.
+  Future<String?> changePassword(
+    String currentPassword,
+    String newPassword,
+  ) async {
+    final t = token;
+    if (t == null) {
+      return L.t('Not signed in.', ru: 'Вы не вошли в систему.');
+    }
+    try {
+      await Api.changePassword(
+        t,
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } catch (_) {
+      return L.t(
+        'Could not reach the server.',
+        ru: 'Не удалось связаться с сервером.',
+      );
+    }
+  }
+
   Future<void> _applyAuth(String newToken, User newUser) async {
     _authRetry?.cancel();
     await _finalizeCall();
