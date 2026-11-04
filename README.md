@@ -75,7 +75,29 @@ flutter run -d <android-device>   # phone/emulator
 | Files | Local storage browser (Android `/storage/emulated/0`, Windows drive roots), full file operations |
 | Browse | Tabbed web browser, URL bar, reload/back/forward, persisted bookmarks |
 | Stream | Live directory, channel profile (title/description/game), broadcast room with chat and moderation |
-| Settings | Your profile, security (two-factor auth, encrypted password vault, password change), connection status, server URL (live reconnect), sign out |
+| Settings | Your profile, security (two-factor auth, encrypted password vault, password change), connection status, server URL (live reconnect), the Open Hexagon map maker, sign out |
+
+### Open Hexagon map maker
+
+**Settings → Support & Tools → Open Hexagon map maker** builds a complete,
+self-contained pack for **Open Hexagon 1.92**:
+
+- **Design** — pack/level name, author, description, palette, arena sides and
+  speed/rotation pacing. The preview orbits the arena the same way the game does;
+  drag it to look around, double-tap to reset the angle.
+- **Patterns** — reorderable sequence of original pattern families (barrage,
+  spiral, alternate, tunnel, zipper, mirror, sweep, breather), each with a calm /
+  brisk / wild intensity. Optionally shuffle the order every cycle.
+- **Ending** — a timed late-game switch that can flip to a generated black-and-
+  white style, show an important message and boost the speed. This is the "die in
+  a B&W stage" ending.
+- **Export** — **Save .zip** writes `Packs/<pack>/…`; **Export as folder** writes
+  the pack straight into a chosen folder. The pack always includes its own style,
+  Lua script and a bundled silent OGG (replace that file to use real music).
+
+The Lua is generated from Commsuite's own pattern implementations, not copied
+from the default packs. Drafts autosave locally, and the generated Lua can be
+viewed or copied from the export tab.
 
 ### Notes / platform specifics
 

@@ -16,6 +16,7 @@ import '../mod/mod_banned_screen.dart';
 import '../mod/mod_verified_screen.dart';
 import '../support/support_screen.dart';
 import '../dev/developer_tools_screen.dart';
+import '../hexagon/hexagon_maker_screen.dart';
 import '../account/account_switcher.dart';
 import 'change_password_sheet.dart';
 import 'password_vault_sheet.dart';
@@ -498,6 +499,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const SupportScreen()),
+              ),
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.hexagon_outlined),
+              title: Text(
+                L.t('Open Hexagon map maker', ru: 'Создатель карт Open Hexagon'),
+              ),
+              subtitle: Text(
+                L.t(
+                  'Build a playable 1.92 pack with your own patterns',
+                  ru: 'Соберите играбельный пак для 1.92 со своими паттернами',
+                ),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const HexMapMakerScreen()),
               ),
             ),
           ),
