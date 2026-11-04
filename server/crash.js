@@ -34,8 +34,9 @@ function cleanSpecs(specs) {
   return out;
 }
 
-// POST /api/crash-report — the app's launch-time crash dialog calls this to
-// file the crash (timestamp + log + device specs) as a GitHub issue.
+// POST /api/crash-report — the app files crashes here automatically (and the
+// recovery dialog can retry). Reports with the same crash signature extend the
+// existing GitHub issue instead of creating a duplicate.
 router.post('/crash-report', (req, res) => {
   const body = req.body ?? {};
   const log = String(body.log || '').slice(0, MAX_LOG);
@@ -48,14 +49,18 @@ router.post('/crash-report', (req, res) => {
     platform: String(body.platform || '').slice(0, 200),
     appVersion: String(body.appVersion || '').slice(0, 60),
     username: String(body.username || '').slice(0, 60),
+    auto: body.auto === true,
     specs: cleanSpecs(body.specs),
   };
-  res.json({ ok: true });
+  res.json({ ok: true, queued: reportingConfigured() });
 
   if (reportingConfigured()) {
     fileCrashIssue(report)
       .then((issue) => {
-        if (issue.number) console.log(`Crash report -> issue #${issue.number}`);
+        if (!issue.number) return;
+        const action = issue.duplicate ? 'matched' : 'filed';
+        const extra = issue.reopened ? ', reopened' : '';
+        console.log(`Crash report -> ${action} issue #${issue.number}${extra}`);
       })
       .catch((err) => console.error('Crash report -> GitHub issue failed:', err.message));
   }

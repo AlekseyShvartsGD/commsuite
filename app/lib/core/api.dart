@@ -226,12 +226,14 @@ class Api {
     String appVersion = '',
     String? username,
     String? token,
+    bool auto = false,
   }) async {
     await _request('POST', '/crash-report', body: {
       'timestamp': timestamp,
       'log': log,
       'platform': platform,
       'appVersion': appVersion,
+      'auto': auto,
       'specs': specs,
       if (username != null && username.isNotEmpty) 'username': username,
     }, token: token);

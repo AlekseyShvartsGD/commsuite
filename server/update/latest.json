@@ -1,22 +1,22 @@
 {
     "installer":  "/update/commsuite-setup.exe",
-    "version":  "1.1.2",
+    "version":  "1.1.3",
     "apk":  "/update/commsuite.apk",
-    "apkSize":  98251211,
+    "apkSize":  98251207,
     "mirrors":  {
-                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.2/commsuite-linux-1.1.2.tar.gz",
-                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.2/commsuite-setup.exe",
-                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.2/commsuite.apk"
+                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.3/commsuite-linux-1.1.3.tar.gz",
+                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.3/commsuite-setup.exe",
+                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.1.3/commsuite.apk"
                 },
-    "apkVersion":  "1.1.2",
-    "publishedAt":  1793695223748,
-    "installerSize":  23895040,
-    "linux":  "/update/commsuite-linux-1.1.2.tar.gz",
-    "installerSha256":  "c33ee68cd0324f7540426c27b80d30dc43991112ee17dcd2aaa48d53ef768e11",
-    "linuxSha256":  "819cf5acc8b2ef9f6cab3743266aabca513ceb48f3ace9f2684f905f31ddf95d",
-    "windowsVersion":  "1.1.2",
-    "notes":  "Local password vault (AES-GCM, own passphrase) and in-app password change; fixes stream-teardown crash \u0027Call initialize before setting the stream\u0027 (issue #9).",
-    "apkSha256":  "8c89ad18f3ce8cf6c1614e4877ddcb7aad048876698ce15cc59f7a1a78b2e1f6",
-    "linuxSize":  21278012,
-    "linuxVersion":  "1.1.2"
+    "apkVersion":  "1.1.3",
+    "publishedAt":  1793783851431,
+    "installerSize":  23898112,
+    "linux":  "/update/commsuite-linux-1.1.3.tar.gz",
+    "installerSha256":  "628757003b788fd0f6e38daa785980b5fe14d55c5b0c82f8e4e0e36011d3c073",
+    "linuxSha256":  "03871b7a7713287ecb78bfb0553b5e8e2078ab1e530252c33ab3cbd0b4bb8291",
+    "windowsVersion":  "1.1.3",
+    "notes":  "Automatic crash reporting with server-side de-duplication: repeat crashes extend one GitHub issue (comment + reopen) instead of filing duplicates. Includes crash reporter unit tests and 3 new smoke assertions.",
+    "apkSha256":  "3cda863440f4e4c8af61e93f796b69bbe2b965e889a5e3320b81f7a54a1ec601",
+    "linuxSize":  21278559,
+    "linuxVersion":  "1.1.3"
 }

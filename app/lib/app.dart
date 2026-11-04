@@ -93,7 +93,8 @@ class _CommsAppState extends State<CommsApp> with WidgetsBindingObserver {
     if (!mounted || report == null) return;
     await showDialog<void>(
       context: navigatorKey.currentContext ?? context,
-      builder: (dialogContext) => _CrashReportDialog(report: report),
+      builder: (dialogContext) =>
+          _CrashReportDialog(report: report, autoSend: true),
     );
     await CrashReporter.clearPendingCrash();
   }
@@ -190,7 +191,7 @@ class _CrashReportListenerState extends State<_CrashReportListener> {
     try {
       await showDialog<void>(
         context: ctx,
-        builder: (_) => _CrashReportDialog(report: report),
+        builder: (_) => _CrashReportDialog(report: report, autoSend: true),
       );
     } catch (_) {
     } finally {
@@ -203,9 +204,10 @@ class _CrashReportListenerState extends State<_CrashReportListener> {
 }
 
 class _CrashReportDialog extends StatefulWidget {
-  const _CrashReportDialog({required this.report});
+  const _CrashReportDialog({required this.report, this.autoSend = false});
 
   final String report;
+  final bool autoSend;
 
   @override
   State<_CrashReportDialog> createState() => _CrashReportDialogState();
@@ -217,6 +219,21 @@ class _CrashReportDialogState extends State<_CrashReportDialog> {
   String? _error;
 
   String get _report => widget.report;
+
+  @override
+  void initState() {
+    super.initState();
+    if (CrashReporter.wasReported(_report)) {
+      // Already uploaded in this app session; don't add another occurrence.
+      _sent = true;
+    } else if (widget.autoSend) {
+      // Automatic reporting: send as soon as the dialog can build. The user
+      // still sees the log and gets a retry button if the upload fails.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_sending && !_sent) _send();
+      });
+    }
+  }
 
   /// The crash is logged with a leading `[ISO-8601]` stamp; reuse it so the
   /// issue reflects when the crash happened, not when it was reported.
@@ -247,7 +264,9 @@ class _CrashReportDialogState extends State<_CrashReportDialog> {
         appVersion: await DeviceSpecs.appVersion(),
         username: controller.user?.username,
         token: controller.token,
-      );
+        auto: widget.autoSend,
+      ).timeout(const Duration(seconds: 20));
+      CrashReporter.markReported(_report);
       if (!mounted) return;
       setState(() {
         _sending = false;
@@ -306,6 +325,28 @@ class _CrashReportDialogState extends State<_CrashReportDialog> {
                 ),
               ),
             ),
+            if (_sending) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      widget.autoSend
+                          ? L.t('Sending the crash report automatically…',
+                              ru: 'Автоматически отправляем отчёт о сбое…')
+                          : L.t('Sending the crash report…',
+                              ru: 'Отправляем отчёт о сбое…'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             if (_sent) ...[
               const SizedBox(height: 12),
               Row(
@@ -314,8 +355,11 @@ class _CrashReportDialogState extends State<_CrashReportDialog> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      L.t('Report sent. Thank you!',
-                          ru: 'Отчёт отправлен. Спасибо!'),
+                      widget.autoSend
+                          ? L.t('Report sent automatically. Thank you!',
+                              ru: 'Отчёт отправлен автоматически. Спасибо!')
+                          : L.t('Report sent. Thank you!',
+                              ru: 'Отчёт отправлен. Спасибо!'),
                     ),
                   ),
                 ],

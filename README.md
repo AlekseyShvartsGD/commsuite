@@ -29,10 +29,11 @@ npm start      # listens on 0.0.0.0:3000
 
 - HTTP API on port `3000` (`/api/...`), WebSocket signaling on `/ws?token=<jwt>`.
 - Data is stored in `server/data/` (SQLite DB `app.db`, uploads, JWT secret). This folder is git-ignored and created on first start.
-- Smoke test (starts the server on port 3457 against a throwaway data directory and runs 83 assertions):
+- Smoke test (starts the server on port 3457 against a throwaway data directory and runs 86 assertions):
 
 ```bash
 npm run smoke
+npm test        # GitHub crash-report de-duplication tests (mocked API)
 ```
 
 ### API overview
@@ -40,6 +41,7 @@ npm run smoke
 - `POST /api/register` · `POST /api/login` → `{ token, user }`, or `{ twoFactorRequired, challenge }` when TOTP is on · `POST /api/login/2fa` (challenge + TOTP or recovery code) → `{ token, user }`
 - `GET /api/2fa/status` · `POST /api/2fa/setup` (secret + `otpauth://` URL) · `POST /api/2fa/enable` (code → ten recovery codes, shown once) · `POST /api/2fa/disable` (password + code)
 - `POST /api/password` (current password + new password; stored as a bcrypt hash, never recoverable from the server)
+- `POST /api/crash-report` (public; automatic crash reports, de-duplicated by crash signature)
 - `GET /api/me` (Bearer token)
 - `GET /api/users/search?q=` · `POST /api/conversations` (idempotent 1:1 lookup)
 - `GET /api/conversations` · `GET /api/conversations/:id/messages?limit=&before=`
@@ -149,6 +151,26 @@ Demo and smoke-test accounts are hidden from the people directory
   break saved records. Nothing is uploaded to the server; forgetting the vault
   passphrase means the records cannot be recovered, and deleting the vault
   erases them permanently.
+
+### Crash reporting
+
+The app reports unhandled crashes automatically — both the recovery dialog after
+a crash and the in-app error window upload the log without waiting for a tap.
+If the upload fails the dialog keeps the log and offers **Report** as a retry.
+
+Set `COMMSUITE_GH_REPORTER_TOKEN` on the server to mirror reports into GitHub
+issues. The server matches each crash by its summary line (the normalised
+`App crash: …` title):
+
+- a new signature creates one issue with the `bug` label;
+- a known signature adds an occurrence comment with the timestamp, app version,
+  platform, device details and log, and reopens the issue if it was closed.
+
+Comments are throttled to one per issue every 15 minutes
+(`COMMSUITE_CRASH_COMMENT_COOLDOWN_MS`), and simultaneous reports with the same
+signature are serialised, so a crash loop or many affected devices cannot flood
+the tracker with duplicate issues. `COMMSUITE_GH_REPORTER_REPO` overrides the
+target repository; without a token reports stay local-only.
 
 ### Calls on UDP-blocked networks (TURN relay)
 

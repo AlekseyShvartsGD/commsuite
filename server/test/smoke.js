@@ -312,6 +312,30 @@ try {
   }, tokenA);
   check('file message', fileMsg.status === 201 && fileMsg.json.message.attachment?.name === 'note.txt');
 
+  console.log('crash reporting');
+  const emptyCrash = await api('/api/crash-report', {
+    method: 'POST',
+    body: { log: '   ' },
+  });
+  check('empty crash log rejected', emptyCrash.status === 400);
+  const crash = await api('/api/crash-report', {
+    method: 'POST',
+    body: {
+      timestamp: new Date().toISOString(),
+      log: 'SmokeCrash: deliberate test failure\n#0 main (package:commsuite/smoke.dart:1:1)',
+      platform: 'smoke-test',
+      appVersion: '1.1.3',
+      auto: true,
+      specs: { Device: 'CI' },
+    },
+  });
+  check('crash report accepted', crash.status === 200 && crash.json.ok === true);
+  check(
+    'crash report reports GitHub queueing state',
+    typeof crash.json.queued === 'boolean',
+    JSON.stringify(crash.json),
+  );
+
   console.log('websocket');
   const wsA = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${tokenA}`);
   const wsB = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${tokenB}`);
