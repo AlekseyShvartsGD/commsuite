@@ -361,17 +361,21 @@ local function patternBarrage(level)
   settle()
 end
 
--- A rotating spiral of single walls.
+-- Cloned from VeeDefault's pMirrorSpiral: perfect thickness, mirrored walls and
+-- a full perfect delay between steps keep the spiral playable.
 local function patternSpiral(level)
+  local thickness = THICKNESS * getSpeedMult()
+  local delay = perfectDelay(thickness)
   local side = anySide()
   local direction = randomDirection()
-  local count = 4 + level
+  local count = 2 + level
   for i = 1, count do
-    wall(side, THICKNESS)
+    wall(side, thickness)
+    wall(oppositeOf(side), thickness)
     side = side + direction
-    wait(perfectDelay(THICKNESS) * (1.2 - 0.05 * (level - 1)))
+    wait(delay)
   end
-  settle()
+  wait(perfectDelay(THICKNESS) * 6.5)
 end
 
 -- Alternating opposite walls leave two safe lanes that swap every beat.

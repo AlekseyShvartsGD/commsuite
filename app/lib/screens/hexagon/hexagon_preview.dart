@@ -70,16 +70,19 @@ HexPreviewTimeline buildHexPreviewTimeline(HexMapDraft draft) {
         }
         time = at + 0.55;
       case HexPatternKind.spiral:
+        // Mirrors VeeDefault's pMirrorSpiral: thick mirrored walls with a full
+        // perfect delay between steps, which is what keeps it playable.
         var side = random.nextInt(sides);
         final direction = random.nextBool() ? 1 : -1;
-        final count = 4 + level;
+        final count = 3 + level;
         var at = time;
         for (var i = 0; i < count; i++) {
-          addWall(side, at, 0.06);
+          addWall(side, at, 0.085);
+          addWall(oppositeOf(side), at, 0.085);
           side = wrapSide(side + direction);
-          at += 0.26;
+          at += 0.62;
         }
-        time = at + 0.5;
+        time = at + 1.0;
       case HexPatternKind.alternate:
         final side = random.nextInt(sides);
         final opposite = oppositeOf(side);
@@ -338,82 +341,83 @@ class _HexPreviewPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = math.min(size.width, size.height) * 0.42;
-    final rect = Offset.zero & size;
+    final shortest = math.min(size.width, size.height);
+    final radius = shortest * 0.29;
+    final apothem = radius * math.cos(math.pi / sides);
+    final halfLength = radius * math.sin(math.pi / sides) * 0.97;
+    final outer = apothem + radius * 0.55;
 
-    final background = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          Color.lerp(_background, _accent(0), blackAndWhite ? 0.0 : 0.16)!,
-          _background,
-        ],
-      ).createShader(rect);
-    canvas.drawRect(rect, background);
+    // Flat, dark backdrop. No white halo, no additive glow.
+    canvas.drawRect(Offset.zero & size, Paint()..color = _background);
 
     canvas.save();
     canvas.translate(center.dx, center.dy);
     canvas.rotate(rotation);
 
-    final borderPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2
-      ..color = _accent(0).withValues(alpha: 0.22);
-    for (var ring = 1; ring <= 3; ring++) {
-      canvas.drawPath(
-        _polygonPath(radius * ring / 3, sides),
-        borderPaint..color = _accent(0).withValues(alpha: 0.05 + ring * 0.035),
-      );
-    }
+    // Exactly one arena hexagon: a tinted fill and a thick outline.
+    final hexagon = _polygonPath(radius, sides);
     canvas.drawPath(
-      _polygonPath(radius, sides),
-      borderPaint..color = _accent(0).withValues(alpha: 0.3),
+      hexagon,
+      Paint()
+        ..color = Color.lerp(
+          _background,
+          _accent(0),
+          blackAndWhite ? 0.04 : 0.10,
+        )!,
+    );
+    canvas.drawPath(
+      hexagon,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = radius * 0.035
+        ..strokeJoin = StrokeJoin.miter
+        ..color = _accent(0).withValues(alpha: 0.9),
     );
 
+    // Every obstacle keeps its size while it travels. Drawing the full swept
+    // path of all obstacles and merging them produces the six chevron bands
+    // that sit around the arena.
+    for (final wall in timeline.walls) {
+      final angle = (wall.side + 0.5) * 2 * math.pi / sides - math.pi / 2;
+      final normal = Offset(math.cos(angle), math.sin(angle));
+      final tangent = Offset(-math.sin(angle), math.cos(angle));
+      final innerMid = normal * apothem;
+      final outerMid = normal * outer;
+      final color = _accent(wall.side);
+      final half = tangent * halfLength;
+
+      // Outline of the swept obstacle path. Merging the paths of every
+      // obstacle leaves the chevron outlines around the arena.
+      final edgePaint = Paint()
+        ..color = color.withValues(alpha: 0.42)
+        ..strokeWidth = math.max(1.0, radius * 0.014)
+        ..strokeCap = StrokeCap.butt;
+      canvas.drawLine(innerMid - half, outerMid - half, edgePaint);
+      canvas.drawLine(innerMid + half, outerMid + half, edgePaint);
+      canvas.drawLine(innerMid - half, innerMid + half, edgePaint);
+      canvas.drawLine(outerMid - half, outerMid + half, edgePaint);
+    }
+
+    // A bright dash slides inward along each path, so the merged pattern still
+    // shows where the obstacles are travelling. Its size stays constant.
     for (final wall in timeline.walls) {
       final progress = (seconds - wall.start) / wall.travel;
       if (progress < 0 || progress > 1) continue;
-      final distance = radius * (1.0 - progress * 0.93);
-      if (distance <= radius * 0.06) continue;
       final angle = (wall.side + 0.5) * 2 * math.pi / sides - math.pi / 2;
-      final midpoint = Offset(
-        math.cos(angle) * distance,
-        math.sin(angle) * distance,
-      );
-      final halfLength = distance * math.tan(math.pi / sides) * 0.96;
-      final tangent = Offset(math.cos(angle + math.pi / 2),
-          math.sin(angle + math.pi / 2));
-      final start = midpoint - tangent * halfLength;
-      final end = midpoint + tangent * halfLength;
-      final color = _accent(wall.side);
-
+      final normal = Offset(math.cos(angle), math.sin(angle));
+      final tangent = Offset(-math.sin(angle), math.cos(angle));
+      final half = tangent * halfLength;
+      final distance = outer + (apothem - outer) * progress;
+      final mid = normal * distance;
       canvas.drawLine(
-        start,
-        end,
+        mid - half,
+        mid + half,
         Paint()
-          ..color = color.withValues(alpha: 0.18)
-          ..strokeWidth = radius * wall.thickness * 2.4
-          ..strokeCap = StrokeCap.butt,
-      );
-      canvas.drawLine(
-        start,
-        end,
-        Paint()
-          ..color = color.withValues(alpha: 0.92)
-          ..strokeWidth = radius * wall.thickness
+          ..color = _accent(wall.side).withValues(alpha: 0.95)
+          ..strokeWidth = math.max(2.0, radius * 0.022)
           ..strokeCap = StrokeCap.butt,
       );
     }
-
-    // Player: a small triangle locked to the center, pointing outward.
-    final player = Path()
-      ..moveTo(0, -radius * 0.13)
-      ..lineTo(-radius * 0.055, radius * 0.045)
-      ..lineTo(radius * 0.055, radius * 0.045)
-      ..close();
-    canvas.drawPath(
-      player,
-      Paint()..color = blackAndWhite ? Colors.white : _accent(0),
-    );
 
     canvas.restore();
   }

@@ -19,6 +19,14 @@ class HexMapMakerScreen extends StatefulWidget {
 }
 
 class _HexMapMakerScreenState extends State<HexMapMakerScreen> {
+  /// Open Hexagon ships its own display font; the identity fields use it so the
+  /// menu/level cards look like the game does.
+  static const _hexInputStyle = TextStyle(
+    fontFamily: 'Imagine',
+    fontSize: 18,
+    letterSpacing: 0.6,
+  );
+
   final _packName = TextEditingController();
   final _levelName = TextEditingController();
   final _author = TextEditingController();
@@ -428,6 +436,7 @@ class _HexMapMakerScreenState extends State<HexMapMakerScreen> {
         TextField(
           controller: _packName,
           maxLength: 60,
+          style: _hexInputStyle,
           decoration: InputDecoration(
             labelText: L.t('Pack name', ru: 'Название пака'),
             helperText: L.t(
@@ -443,6 +452,7 @@ class _HexMapMakerScreenState extends State<HexMapMakerScreen> {
         TextField(
           controller: _levelName,
           maxLength: 60,
+          style: _hexInputStyle,
           decoration: InputDecoration(
             labelText: L.t('Level name', ru: 'Название уровня'),
             helperText: L.t(
@@ -458,6 +468,7 @@ class _HexMapMakerScreenState extends State<HexMapMakerScreen> {
         TextField(
           controller: _author,
           maxLength: 80,
+          style: _hexInputStyle,
           decoration: InputDecoration(
             labelText: L.t('Author', ru: 'Автор'),
             prefixIcon: const Icon(Icons.person_outline),
@@ -471,6 +482,7 @@ class _HexMapMakerScreenState extends State<HexMapMakerScreen> {
           maxLength: 300,
           minLines: 2,
           maxLines: 4,
+          style: _hexInputStyle,
           decoration: InputDecoration(
             labelText: L.t('Description', ru: 'Описание'),
             alignLabelWithHint: true,
@@ -850,6 +862,7 @@ class _HexMapMakerScreenState extends State<HexMapMakerScreen> {
                   TextField(
                     controller: _endingMessage,
                     maxLength: 120,
+                    style: _hexInputStyle,
                     decoration: InputDecoration(
                       labelText: L.t('Ending message', ru: 'Сообщение концовки'),
                       hintText: L.t(

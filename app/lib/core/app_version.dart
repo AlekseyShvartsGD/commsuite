@@ -5,4 +5,4 @@
 ///
 /// `test/version_sync_test.dart` fails when this drifts from pubspec.yaml, so
 /// the update prompt can never advertise a version the build already is.
-const String appVersion = '1.2.0';
+const String appVersion = '1.2.1';

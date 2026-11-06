@@ -162,7 +162,7 @@ class HexMapDraft {
       packName: 'My Hexagon Pack',
       levelName: 'First Orbit',
       author: author,
-      description: 'A custom Open Hexagon level made with Commsuite.',
+      description: 'A custom Open Hexagon level made with Commsuite',
       menuPriority: 10,
       palette: HexPalette.neon,
       sides: 6,

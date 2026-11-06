@@ -78,6 +78,7 @@ void main() {
 
     test('accepts a default draft with an author', () {
       expect(draft().validate(), isEmpty);
+      expect(draft().description.endsWith('.'), isFalse);
     });
 
     test('round-trips through JSON including camera settings', () {
@@ -227,6 +228,24 @@ void main() {
       expect(lua, contains('local intensity = { 2, 2 }'));
       expect(lua, contains('local shufflePatterns = false'));
       expect(lua, contains('dispatchers[sequence[index]]'));
+    });
+
+    test('spiral clones the playable VeeDefault mirror spiral', () {
+      final pack = HexPackBuilder.build(
+        draft().copyWith(
+          patterns: [
+            HexPatternSelection(kind: HexPatternKind.spiral),
+          ],
+          shufflePatterns: false,
+        ),
+      );
+      final lua = pack.textFiles['Scripts/first_orbit.lua']!;
+
+      expect(lua, contains('local thickness = THICKNESS * getSpeedMult()'));
+      expect(lua, contains('wall(side, thickness)'));
+      expect(lua, contains('wall(oppositeOf(side), thickness)'));
+      expect(lua, contains('local delay = perfectDelay(thickness)'));
+      expect(lua, contains('perfectDelay(THICKNESS) * 6.5'));
     });
 
     test('music json points at the bundled silent track', () {

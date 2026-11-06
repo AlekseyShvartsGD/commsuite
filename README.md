@@ -224,7 +224,7 @@ Windows 10/11). It has a folder picker, a progress bar and a black
 ```powershell
 # 1. Flutter Windows build into dist\app
 cd app
-flutter build windows
+flutter build windows --release
 Copy-Item build\windows\x64\runner\Release\* ..\dist\app -Recurse -Force
 
 # 2. build dist\CommsuiteSetup.exe (stages dist\app -> embedded zip)

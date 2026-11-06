@@ -465,6 +465,7 @@ class _StreamScreenState extends State<StreamScreen>
                     DropdownMenuItem(value: 3, child: Text(L.t('3 seconds', ru: '3 секунды'))),
                     DropdownMenuItem(value: 10, child: Text(L.t('10 seconds', ru: '10 секунд'))),
                     DropdownMenuItem(value: 30, child: Text(L.t('30 seconds', ru: '30 секунд'))),
+                    DropdownMenuItem(value: 60, child: Text(L.t('1 minute', ru: '1 минута'))),
                   ],
                   onChanged: (v) => setState(() => _slowMode = v ?? 0),
                 ),
