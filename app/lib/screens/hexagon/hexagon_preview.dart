@@ -268,13 +268,11 @@ class _HexPreviewPainter extends CustomPainter {
     if (count == 0) return;
 
     // The reference places the bands well outside the arena, tangent to it,
-    // one per pattern. Keeping the radius and size fixed means nothing shrinks
-    // as the camera turns.
+    // one per pattern. The size is fixed: it never shrinks as the camera turns
+    // or as more patterns are added. With a full set of six the ends overlap
+    // at the arena corners, so the obstacles read as one connected frame.
     final bandRadius = shortest * 0.36;
     final baseWidth = shortest * 0.062;
-    // Keep a visible gap between neighbouring bands so a full set of six reads
-    // as six obstacles rather than one thick ring.
-    final spacingLimit = bandRadius * math.sin(math.pi / count) * 0.9;
 
     for (var i = 0; i < count; i++) {
       final band = timeline.bands[i];
@@ -283,9 +281,9 @@ class _HexPreviewPainter extends CustomPainter {
       final tangent = Offset(-math.sin(angle), math.cos(angle));
 
       final width = baseWidth * (0.92 + 0.04 * band.intensity);
-      final halfOuter = math.min(
-        bandRadius * math.tan(math.pi / sides) * 1.05,
-        math.min(shortest * 0.21, spacingLimit),
+      final halfOuter = (bandRadius * math.tan(math.pi / sides) * 1.15).clamp(
+        shortest * 0.12,
+        shortest * 0.26,
       );
       // The ends are bevelled, so the inner edge is shorter than the outer one.
       final halfInner = math.max(0.0, halfOuter - width * 0.58);
