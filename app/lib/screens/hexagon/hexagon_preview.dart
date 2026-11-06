@@ -4,159 +4,71 @@ import 'package:flutter/material.dart';
 
 import '../../hexagon/hexagon_models.dart';
 
-class HexPreviewWall {
-  const HexPreviewWall({
-    required this.side,
-    required this.start,
-    required this.travel,
-    required this.thickness,
+/// One obstacle region in the preview.
+///
+/// The reference layout shows each pattern as a solid, elongated band that
+/// sits outside the arena and runs parallel to one of its sides. The band is
+/// the merged result of moving a constant-size obstacle across the pattern's
+/// sides: a trapezoid with bevelled ends, never a rectangle or a square.
+class HexPreviewBand {
+  const HexPreviewBand({
+    required this.slot,
+    required this.kind,
+    required this.intensity,
   });
 
-  final int side;
-  final double start;
-  final double travel;
+  /// Position around the arena, used for the palette accent.
+  final int slot;
+  final HexPatternKind kind;
 
-  /// Wall thickness as a fraction of the arena radius.
-  final double thickness;
+  /// 1 = calm, 2 = brisk, 3 = wild.
+  final int intensity;
 }
 
 class HexPreviewTimeline {
   const HexPreviewTimeline({
-    required this.walls,
+    required this.bands,
     required this.duration,
     required this.blackAndWhiteStart,
   });
 
-  final List<HexPreviewWall> walls;
+  final List<HexPreviewBand> bands;
   final double duration;
 
   /// Time in the loop where the B&W ending kicks in, or null when disabled.
   final double? blackAndWhiteStart;
 }
 
-/// Approximates the generated Lua timeline closely enough to recognize each
-/// pattern family and the pace of the level.
+/// Builds the static pattern map that the preview draws: one obstacle band per
+/// pattern, spread evenly around the arena. With three patterns this matches
+/// the reference exactly (bands at 0°, 120° and 240°); with six every side of
+/// the hexagon gets one.
 HexPreviewTimeline buildHexPreviewTimeline(HexMapDraft draft) {
-  final random = math.Random(0x51D0);
-  final walls = <HexPreviewWall>[];
-  final sides = draft.sides.clamp(3, 10);
-  final travel = (1.05 / (0.72 + draft.speedMultiplier * 0.28)).clamp(0.42, 1.6);
-  var time = 0.0;
-
-  int wrapSide(int side) => ((side % sides) + sides) % sides;
-  int oppositeOf(int side) => wrapSide(side + sides ~/ 2);
-
-  void addWall(int side, double start, double thickness) {
-    walls.add(
-      HexPreviewWall(
-        side: wrapSide(side),
-        start: start,
-        travel: travel,
-        thickness: thickness,
+  final selections = draft.patterns;
+  final bands = <HexPreviewBand>[];
+  for (var i = 0; i < selections.length; i++) {
+    bands.add(
+      HexPreviewBand(
+        slot: i,
+        kind: selections[i].kind,
+        intensity: selections[i].intensity.clamp(1, 3),
       ),
     );
   }
-
-  for (final selection in draft.patterns) {
-    final level = selection.intensity.clamp(1, 3);
-    switch (selection.kind) {
-      case HexPatternKind.barrage:
-        final side = random.nextInt(sides);
-        final count = 3 + level;
-        var at = time;
-        for (var i = 0; i < count; i++) {
-          addWall(side, at, 0.052 + 0.008 * level);
-          at += 0.3;
-        }
-        time = at + 0.55;
-      case HexPatternKind.spiral:
-        // Mirrors VeeDefault's pMirrorSpiral: thick mirrored walls with a full
-        // perfect delay between steps, which is what keeps it playable.
-        var side = random.nextInt(sides);
-        final direction = random.nextBool() ? 1 : -1;
-        final count = 3 + level;
-        var at = time;
-        for (var i = 0; i < count; i++) {
-          addWall(side, at, 0.085);
-          addWall(oppositeOf(side), at, 0.085);
-          side = wrapSide(side + direction);
-          at += 0.62;
-        }
-        time = at + 1.0;
-      case HexPatternKind.alternate:
-        final side = random.nextInt(sides);
-        final opposite = oppositeOf(side);
-        final count = 3 + level;
-        var at = time;
-        for (var i = 0; i < count; i++) {
-          addWall(side, at, 0.06);
-          addWall(opposite, at + 0.8, 0.06);
-          at += 1.6;
-        }
-        time = at + 0.6;
-      case HexPatternKind.tunnel:
-        final side = random.nextInt(sides);
-        addWall(side, time, 0.075 + 0.008 * level);
-        addWall(oppositeOf(side), time, 0.075 + 0.008 * level);
-        time += 1.15;
-      case HexPatternKind.zipper:
-        var side = random.nextInt(sides);
-        final direction = random.nextBool() ? 1 : -1;
-        final count = 4 + level;
-        var at = time;
-        for (var i = 0; i < count; i++) {
-          addWall(side, at, 0.058);
-          addWall(side + direction, at, 0.048);
-          side = wrapSide(side + direction);
-          at += 0.34;
-        }
-        time = at + 0.5;
-      case HexPatternKind.mirror:
-        var side = random.nextInt(sides);
-        var opposite = oppositeOf(side);
-        final count = 2 + level;
-        var at = time;
-        for (var i = 0; i < count; i++) {
-          addWall(side, at, 0.06);
-          addWall(opposite, at, 0.06);
-          side = wrapSide(side + 1);
-          opposite = wrapSide(opposite - 1);
-          at += 0.42;
-        }
-        time = at + 0.45;
-      case HexPatternKind.sweep:
-        var side = random.nextInt(sides);
-        final direction = random.nextBool() ? 1 : -1;
-        final count = sides - 1;
-        var at = time;
-        for (var i = 0; i < count; i++) {
-          addWall(side, at, 0.058);
-          side = wrapSide(side + direction);
-          at += 0.28;
-        }
-        time = at + 0.5;
-      case HexPatternKind.breather:
-        time += 1.2;
-    }
-  }
-
-  if (walls.isEmpty) {
-    walls.add(
-      HexPreviewWall(side: 0, start: 0, travel: travel, thickness: 0.06),
+  if (bands.isEmpty) {
+    bands.add(
+      const HexPreviewBand(slot: 0, kind: HexPatternKind.barrage, intensity: 2),
     );
   }
 
-  final lastArrival = walls.fold<double>(
-    0,
-    (latest, wall) => math.max(latest, wall.start + wall.travel),
-  );
-  final duration = math.max(6.0, lastArrival + 0.7);
+  final duration = (6.0 + bands.length * 1.6).clamp(6.0, 30.0);
   final ending = draft.ending;
-  final blackAndWhiteStart =
-      ending.enabled && ending.blackAndWhite ? duration * 0.7 : null;
+  final blackAndWhiteStart = ending.enabled && ending.blackAndWhite
+      ? duration * 0.7
+      : null;
 
   return HexPreviewTimeline(
-    walls: walls,
+    bands: bands,
     duration: duration,
     blackAndWhiteStart: blackAndWhiteStart,
   );
@@ -188,16 +100,12 @@ class _HexPreviewState extends State<HexPreview>
   double _manualRotation = 0;
 
   String _keyFor(HexMapDraft draft) => [
-        draft.sides,
-        draft.speedMultiplier,
-        draft.rotationSpeed,
-        draft.fastSpin,
-        draft.shufflePatterns,
-        draft.ending.enabled,
-        draft.ending.blackAndWhite,
-        for (final pattern in draft.patterns)
-          '${pattern.kind.name}:${pattern.intensity}',
-      ].join('|');
+    draft.sides,
+    draft.ending.enabled,
+    draft.ending.blackAndWhite,
+    for (final pattern in draft.patterns)
+      '${pattern.kind.name}:${pattern.intensity}',
+  ].join('|');
 
   @override
   void initState() {
@@ -236,7 +144,6 @@ class _HexPreviewState extends State<HexPreview>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: SizedBox(
@@ -250,44 +157,24 @@ class _HexPreviewState extends State<HexPreview>
           child: AnimatedBuilder(
             animation: _controller,
             builder: (context, _) {
-              final seconds = _controller.value * _timeline.duration;
+              // Whole turns per loop keep the orbit continuous across repeats.
+              final turns = (1 + widget.draft.rotationSpeed * 10).round().clamp(
+                1,
+                8,
+              );
               final auto = widget.rotateCamera
-                  ? seconds * (0.32 + widget.draft.rotationSpeed * 2.6)
+                  ? _controller.value * 2 * math.pi * turns
                   : 0.0;
+              final seconds = _controller.value * _timeline.duration;
               final bwStart = _timeline.blackAndWhiteStart;
               final blackAndWhite = bwStart != null && seconds >= bwStart;
               return CustomPaint(
                 painter: _HexPreviewPainter(
                   timeline: _timeline,
-                  seconds: seconds,
                   sides: widget.draft.sides.clamp(3, 10),
                   palette: widget.draft.palette,
                   blackAndWhite: blackAndWhite,
                   rotation: auto + _manualRotation,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Align(
-                    alignment: Alignment.bottomLeft,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surface.withValues(alpha: 0.7),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        child: Text(
-                          blackAndWhite
-                              ? 'ending · black & white'
-                              : 'drag to orbit · ${widget.draft.sides} sides',
-                          style: theme.textTheme.labelSmall,
-                        ),
-                      ),
-                    ),
-                  ),
                 ),
               );
             },
@@ -301,7 +188,6 @@ class _HexPreviewState extends State<HexPreview>
 class _HexPreviewPainter extends CustomPainter {
   _HexPreviewPainter({
     required this.timeline,
-    required this.seconds,
     required this.sides,
     required this.palette,
     required this.blackAndWhite,
@@ -309,7 +195,6 @@ class _HexPreviewPainter extends CustomPainter {
   });
 
   final HexPreviewTimeline timeline;
-  final double seconds;
   final int sides;
   final HexPalette palette;
   final bool blackAndWhite;
@@ -328,12 +213,24 @@ class _HexPreviewPainter extends CustomPainter {
   Color _accent(int side) {
     if (blackAndWhite) return Colors.white;
     return switch (palette) {
-      HexPalette.neon =>
-        HSVColor.fromAHSV(1, (168 + side * 33) % 150 + 168, 0.62, 1).toColor(),
-      HexPalette.ember =>
-        HSVColor.fromAHSV(1, 8 + (side * 9) % 46, 0.82, 1).toColor(),
-      HexPalette.ocean =>
-        HSVColor.fromAHSV(1, 178 + (side * 17) % 70, 0.72, 1).toColor(),
+      HexPalette.neon => HSVColor.fromAHSV(
+        1,
+        (168 + side * 33) % 150 + 168,
+        0.62,
+        1,
+      ).toColor(),
+      HexPalette.ember => HSVColor.fromAHSV(
+        1,
+        8 + (side * 9) % 46,
+        0.82,
+        1,
+      ).toColor(),
+      HexPalette.ocean => HSVColor.fromAHSV(
+        1,
+        178 + (side * 17) % 70,
+        0.72,
+        1,
+      ).toColor(),
       HexPalette.mono => Colors.white,
     };
   }
@@ -342,84 +239,88 @@ class _HexPreviewPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final shortest = math.min(size.width, size.height);
-    final radius = shortest * 0.29;
-    final apothem = radius * math.cos(math.pi / sides);
-    final halfLength = radius * math.sin(math.pi / sides) * 0.97;
-    final outer = apothem + radius * 0.55;
+    final radius = shortest * 0.13;
 
-    // Flat, dark backdrop. No white halo, no additive glow.
+    // Flat backdrop. No halo, glow or additive white shader.
     canvas.drawRect(Offset.zero & size, Paint()..color = _background);
 
     canvas.save();
     canvas.translate(center.dx, center.dy);
     canvas.rotate(rotation);
 
-    // Exactly one arena hexagon: a tinted fill and a thick outline.
-    final hexagon = _polygonPath(radius, sides);
+    // Exactly one arena polygon, drawn as a single thick outline.
     canvas.drawPath(
-      hexagon,
-      Paint()
-        ..color = Color.lerp(
-          _background,
-          _accent(0),
-          blackAndWhite ? 0.04 : 0.10,
-        )!,
-    );
-    canvas.drawPath(
-      hexagon,
+      _polygonPath(radius, sides),
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = radius * 0.035
+        ..strokeWidth = math.max(1.5, radius * 0.07)
         ..strokeJoin = StrokeJoin.miter
-        ..color = _accent(0).withValues(alpha: 0.9),
+        ..color = _accent(0).withValues(alpha: blackAndWhite ? 0.95 : 0.85),
     );
 
-    // Every obstacle keeps its size while it travels. Drawing the full swept
-    // path of all obstacles and merging them produces the six chevron bands
-    // that sit around the arena.
-    for (final wall in timeline.walls) {
-      final angle = (wall.side + 0.5) * 2 * math.pi / sides - math.pi / 2;
-      final normal = Offset(math.cos(angle), math.sin(angle));
-      final tangent = Offset(-math.sin(angle), math.cos(angle));
-      final innerMid = normal * apothem;
-      final outerMid = normal * outer;
-      final color = _accent(wall.side);
-      final half = tangent * halfLength;
-
-      // Outline of the swept obstacle path. Merging the paths of every
-      // obstacle leaves the chevron outlines around the arena.
-      final edgePaint = Paint()
-        ..color = color.withValues(alpha: 0.42)
-        ..strokeWidth = math.max(1.0, radius * 0.014)
-        ..strokeCap = StrokeCap.butt;
-      canvas.drawLine(innerMid - half, outerMid - half, edgePaint);
-      canvas.drawLine(innerMid + half, outerMid + half, edgePaint);
-      canvas.drawLine(innerMid - half, innerMid + half, edgePaint);
-      canvas.drawLine(outerMid - half, outerMid + half, edgePaint);
-    }
-
-    // A bright dash slides inward along each path, so the merged pattern still
-    // shows where the obstacles are travelling. Its size stays constant.
-    for (final wall in timeline.walls) {
-      final progress = (seconds - wall.start) / wall.travel;
-      if (progress < 0 || progress > 1) continue;
-      final angle = (wall.side + 0.5) * 2 * math.pi / sides - math.pi / 2;
-      final normal = Offset(math.cos(angle), math.sin(angle));
-      final tangent = Offset(-math.sin(angle), math.cos(angle));
-      final half = tangent * halfLength;
-      final distance = outer + (apothem - outer) * progress;
-      final mid = normal * distance;
-      canvas.drawLine(
-        mid - half,
-        mid + half,
-        Paint()
-          ..color = _accent(wall.side).withValues(alpha: 0.95)
-          ..strokeWidth = math.max(2.0, radius * 0.022)
-          ..strokeCap = StrokeCap.butt,
-      );
-    }
+    _paintBands(canvas, shortest);
 
     canvas.restore();
+  }
+
+  void _paintBands(Canvas canvas, double shortest) {
+    final count = timeline.bands.length;
+    if (count == 0) return;
+
+    // The reference places the bands well outside the arena, tangent to it,
+    // one per pattern. Keeping the radius and size fixed means nothing shrinks
+    // as the camera turns.
+    final bandRadius = shortest * 0.36;
+    final baseWidth = shortest * 0.062;
+    // Keep a visible gap between neighbouring bands so a full set of six reads
+    // as six obstacles rather than one thick ring.
+    final spacingLimit = bandRadius * math.sin(math.pi / count) * 0.9;
+
+    for (var i = 0; i < count; i++) {
+      final band = timeline.bands[i];
+      final angle = i * 2 * math.pi / count;
+      final normal = Offset(math.cos(angle), math.sin(angle));
+      final tangent = Offset(-math.sin(angle), math.cos(angle));
+
+      final width = baseWidth * (0.92 + 0.04 * band.intensity);
+      final halfOuter = math.min(
+        bandRadius * math.tan(math.pi / sides) * 1.05,
+        math.min(shortest * 0.21, spacingLimit),
+      );
+      // The ends are bevelled, so the inner edge is shorter than the outer one.
+      final halfInner = math.max(0.0, halfOuter - width * 0.58);
+
+      final mid = normal * bandRadius;
+      final outer = mid + normal * (width / 2);
+      final inner = mid - normal * (width / 2);
+
+      final path = Path()
+        ..moveTo(
+          outer.dx - tangent.dx * halfOuter,
+          outer.dy - tangent.dy * halfOuter,
+        )
+        ..lineTo(
+          outer.dx + tangent.dx * halfOuter,
+          outer.dy + tangent.dy * halfOuter,
+        )
+        ..lineTo(
+          inner.dx + tangent.dx * halfInner,
+          inner.dy + tangent.dy * halfInner,
+        )
+        ..lineTo(
+          inner.dx - tangent.dx * halfInner,
+          inner.dy - tangent.dy * halfInner,
+        )
+        ..close();
+
+      canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.fill
+          ..color = _accent(band.slot)
+              .withValues(alpha: blackAndWhite ? 0.96 : 0.88),
+      );
+    }
   }
 
   Path _polygonPath(double radius, int sides) {
