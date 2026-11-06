@@ -3,14 +3,19 @@
     "version":  "1.2.1",
     "apk":  "/update/commsuite.apk",
     "apkSize":  100684521,
+    "mirrors":  {
+                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.2.1/commsuite-linux-1.2.1.tar.gz",
+                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.2.1/commsuite-setup.exe",
+                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.2.1/commsuite.apk"
+                },
     "apkVersion":  "1.2.1",
-    "publishedAt":  1793961567497,
+    "publishedAt":  1793961696696,
     "installerSize":  24243712,
     "linux":  "/update/commsuite-linux-1.2.1.tar.gz",
     "installerSha256":  "92d9aa141b40705117c1ce944884aea191fe05bbd4a916b574223028b1e939dd",
     "linuxSha256":  "f7ab7eccb3171bb945f24482babc6f5b5092b0767b1abd22e8b644b06e5154dd",
     "windowsVersion":  "1.2.1",
-    "notes":  "Open Hexagon map maker preview now matches the reference: one arena hexagon with six merged obstacle bands, constant-size obstacles, no center triangle, no white glow, and a playable VeeDefault-style spiral. Identity fields use the game\u0027s Imagine font.",
+    "notes":  "Open Hexagon map maker preview now matches the reference: one arena hexagon with six merged obstacle bands, constant-size obstacles, no centre triangle, no white glow, and a playable VeeDefault-style spiral. Identity fields use the game\u0027s Imagine font.",
     "apkSha256":  "23151a4e844f0dcdcb888d5125e6b9247c016defa356f0daa9b0b94d9b750aa6",
     "linuxSize":  21619420,
     "linuxVersion":  "1.2.1"
