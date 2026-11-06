@@ -1,22 +1,22 @@
 {
     "installer":  "/update/commsuite-setup.exe",
-    "version":  "1.2.2",
+    "version":  "1.2.3",
     "apk":  "/update/commsuite.apk",
     "apkSize":  100668137,
     "mirrors":  {
-                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.2.2/commsuite-linux-1.2.2.tar.gz",
-                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.2.2/commsuite-setup.exe",
-                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.2.2/commsuite.apk"
+                    "linux":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.2.3/commsuite-linux-1.2.3.tar.gz",
+                    "installer":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.2.3/commsuite-setup.exe",
+                    "apk":  "https://github.com/AlekseyShvartsGD/commsuite/releases/download/v1.2.3/commsuite.apk"
                 },
-    "apkVersion":  "1.2.2",
-    "publishedAt":  1793963775288,
-    "installerSize":  24235520,
-    "linux":  "/update/commsuite-linux-1.2.2.tar.gz",
-    "installerSha256":  "94d3d20303dfdf2fba4f62e52adc1b21afd9352a2a39f719c89b177bf44ca409",
-    "linuxSha256":  "99eedff2740cd746a66e3e6dcb8174020998b326646c4647901ec71bd2755f7e",
-    "windowsVersion":  "1.2.2",
-    "notes":  "Commsuite 1.2.2 is a map maker preview fix. The preview shows one hexagon with solid obstacle bands exactly like the reference: one band per selected pattern, constant size, no centre triangle, no extra squares and no white glow. The spiral clone, Imagine font and description tweaks from 1.2.1 remain in place.",
-    "apkSha256":  "d8771cb3566fc2ac7d292907c42834f54e4bbc8e291c45df906f3130d87ae13d",
-    "linuxSize":  21613076,
-    "linuxVersion":  "1.2.2"
+    "apkVersion":  "1.2.3",
+    "publishedAt":  1793964452190,
+    "installerSize":  24236032,
+    "linux":  "/update/commsuite-linux-1.2.3.tar.gz",
+    "installerSha256":  "5069111b4e2bc077db8ca7d28dc77ba10817806075420399056914ce413f0311",
+    "linuxSha256":  "ea9c1b70cf453e74b6490bc4eae1426357c663d04700d35ccf01c26ee0fe4dd6",
+    "windowsVersion":  "1.2.3",
+    "notes":  "Commsuite 1.2.3 fixes the map maker obstacle layout. Bands keep the reference size instead of shrinking as patterns are added, and the default six patterns now meet at the arena corners as one connected frame. Three patterns still match prev2.png.",
+    "apkSha256":  "b6ec9e83eecaf3dbf4ed55eff4aa879a4b05d875e1c101017ec8b12e2ab70557",
+    "linuxSize":  21612519,
+    "linuxVersion":  "1.2.3"
 }
